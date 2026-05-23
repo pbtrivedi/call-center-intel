@@ -5,6 +5,12 @@ class CallCenterIntelError(Exception):
         super().__init__(message)
         self.context: dict = context or {}
 
+    def __str__(self) -> str:
+        base = super().__str__()
+        if self.context:
+            return f"{base} | context={self.context}"
+        return base
+
 
 class AudioValidationError(CallCenterIntelError):
     """Raised by intake agent for bad format, size, or duration."""
@@ -32,3 +38,7 @@ class ReportGenerationError(CallCenterIntelError):
 
 class PipelineError(CallCenterIntelError):
     """Generic wrapper for unexpected pipeline failures."""
+
+
+class ConfigurationError(CallCenterIntelError):
+    """Raised when settings.yaml is missing, malformed, or contains invalid values."""

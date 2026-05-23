@@ -3,7 +3,25 @@ from pathlib import Path
 
 import pytest
 
+import src.common.logger as logger_module
 from src.common.logger import get_logger
+
+
+@pytest.fixture(autouse=True)
+def _reset_test_loggers():
+    """Clear _configured and remove handlers for all test.* loggers before and after each test."""
+    def _cleanup():
+        for name in list(logger_module._configured):
+            if name.startswith("test."):
+                log = logging.getLogger(name)
+                for h in list(log.handlers):
+                    log.removeHandler(h)
+                    h.close()
+        logger_module._configured.clear()
+
+    _cleanup()
+    yield
+    _cleanup()
 
 
 def test_returns_logger_instance():
@@ -47,17 +65,11 @@ def test_repeated_calls_same_name_do_not_duplicate_handlers():
     assert len(logging.getLogger("test.dedup").handlers) == count_first
 
 
-def test_logs_dir_created(tmp_path, monkeypatch):
-    import src.common.logger as logger_module
-
+def test_logs_dir_created(tmp_path):
     original_dir = logger_module._LOG_DIR
     logger_module._LOG_DIR = tmp_path / "logs"
-    # Remove from configured set so it gets re-initialised
-    logger_module._configured.discard("test.tmpdir")
-
     try:
         get_logger("test.tmpdir")
         assert (tmp_path / "logs").is_dir()
     finally:
         logger_module._LOG_DIR = original_dir
-        logger_module._configured.discard("test.tmpdir")

@@ -6,7 +6,7 @@ from pathlib import Path
 
 _FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-_LOG_DIR = Path(__file__).parent.parent.parent / "logs"
+_LOG_DIR = Path.cwd() / "logs"
 
 _configured: set[str] = set()
 _configured_lock = threading.Lock()

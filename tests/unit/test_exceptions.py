@@ -3,6 +3,7 @@ import pytest
 from src.common.exceptions import (
     AudioValidationError,
     CallCenterIntelError,
+    ConfigurationError,
     InjectionDetectedError,
     LLMAnalysisError,
     PIIRedactionError,
@@ -19,6 +20,7 @@ _ALL_SUBTYPES = [
     LLMAnalysisError,
     ReportGenerationError,
     PipelineError,
+    ConfigurationError,
 ]
 
 
@@ -62,3 +64,23 @@ def test_injection_detected_error():
 def test_pipeline_error_wraps_message():
     err = PipelineError("unexpected failure")
     assert "unexpected failure" in str(err)
+
+
+def test_str_without_context_is_plain_message():
+    err = AudioValidationError("bad file")
+    assert str(err) == "bad file"
+
+
+def test_str_with_context_includes_context():
+    err = AudioValidationError("bad file", context={"format": "ogg"})
+    assert "bad file" in str(err)
+    assert "ogg" in str(err)
+
+
+def test_configuration_error_inherits_base():
+    assert issubclass(ConfigurationError, CallCenterIntelError)
+
+
+def test_configuration_error_catchable():
+    with pytest.raises(CallCenterIntelError):
+        raise ConfigurationError("settings.yaml not found")

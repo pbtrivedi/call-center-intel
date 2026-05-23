@@ -1,5 +1,7 @@
 import pytest
 
+import src.config.loader as loader_module
+from src.common.exceptions import ConfigurationError
 from src.config.loader import _reset_settings, get_settings
 
 
@@ -72,3 +74,27 @@ def test_reset_clears_cache():
     _reset_settings()
     s2 = get_settings()
     assert s1 is not s2
+
+
+def test_invalid_llm_provider_raises(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "gpt4")
+    with pytest.raises(ConfigurationError, match="LLM_PROVIDER"):
+        get_settings()
+
+
+def test_invalid_int_env_var_raises(monkeypatch):
+    monkeypatch.setenv("MAX_FILE_SIZE_MB", "large")
+    with pytest.raises(ConfigurationError, match="MAX_FILE_SIZE_MB"):
+        get_settings()
+
+
+def test_invalid_app_port_raises(monkeypatch):
+    monkeypatch.setenv("APP_PORT", "eighty")
+    with pytest.raises(ConfigurationError, match="APP_PORT"):
+        get_settings()
+
+
+def test_missing_settings_yaml_raises(monkeypatch, tmp_path):
+    monkeypatch.setattr(loader_module, "_SETTINGS_FILE", tmp_path / "nonexistent.yaml")
+    with pytest.raises(ConfigurationError, match="not found"):
+        get_settings()

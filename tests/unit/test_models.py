@@ -3,6 +3,9 @@ from datetime import date, datetime, timezone
 import pytest
 from pydantic import ValidationError
 
+# A valid 64-character lowercase hex string for sha256_hash fields in test helpers.
+_SHA256 = "a" * 64
+
 from src.models.schemas import (
     ActionItem,
     AudioInput,
@@ -33,7 +36,7 @@ def _segment(**kwargs) -> TranscriptionSegment:
 
 
 def _audio_props(**kwargs) -> AudioProperties:
-    defaults = dict(format="mp3", duration_seconds=120.0, file_size_bytes=2_000_000, sha256_hash="abc123")
+    defaults = dict(format="mp3", duration_seconds=120.0, file_size_bytes=2_000_000, sha256_hash=_SHA256)
     return AudioProperties(**{**defaults, **kwargs})
 
 
@@ -44,7 +47,7 @@ def _transcription(**kwargs) -> TranscriptionResult:
         segments=[_segment()],
         language="en",
         duration_seconds=120.0,
-        sha256_hash="abc123",
+        sha256_hash=_SHA256,
     )
     return TranscriptionResult(**{**defaults, **kwargs})
 
@@ -72,6 +75,52 @@ def _summary(**kwargs) -> SummaryResult:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# 0. TranscriptionSegment
+# ---------------------------------------------------------------------------
+
+
+def test_segment_valid():
+    obj = _segment()
+    assert obj.speaker == "Agent"
+    assert obj.confidence == 0.95
+
+
+def test_segment_invalid_speaker():
+    with pytest.raises(ValidationError):
+        _segment(speaker="Supervisor")
+
+
+def test_segment_confidence_too_low():
+    with pytest.raises(ValidationError):
+        _segment(confidence=-0.1)
+
+
+def test_segment_confidence_too_high():
+    with pytest.raises(ValidationError):
+        _segment(confidence=1.1)
+
+
+def test_segment_confidence_boundary_min():
+    obj = _segment(confidence=0.0)
+    assert obj.confidence == 0.0
+
+
+def test_segment_confidence_boundary_max():
+    obj = _segment(confidence=1.0)
+    assert obj.confidence == 1.0
+
+
+def test_segment_end_before_start_fails():
+    with pytest.raises(ValidationError, match="start_time"):
+        _segment(start_time=5.0, end_time=2.0)
+
+
+# ---------------------------------------------------------------------------
+# 1. AudioInput
+# ---------------------------------------------------------------------------
+
+
 def test_audio_input_minimal():
     obj = AudioInput(file_path="/tmp/call.mp3", filename="call.mp3")
     assert obj.file_path == "/tmp/call.mp3"
@@ -92,7 +141,7 @@ def test_audio_input_with_optional_fields():
 def test_audio_properties_valid():
     obj = _audio_props()
     assert obj.format == "mp3"
-    assert obj.sha256_hash == "abc123"
+    assert obj.sha256_hash == _SHA256
 
 
 def test_audio_properties_optional_sample_rate_none():
@@ -103,6 +152,16 @@ def test_audio_properties_optional_sample_rate_none():
 def test_audio_properties_invalid_format():
     with pytest.raises(ValidationError):
         _audio_props(format="ogg")
+
+
+def test_audio_properties_invalid_sha256_hash():
+    with pytest.raises(ValidationError):
+        _audio_props(sha256_hash="abc123")
+
+
+def test_audio_properties_invalid_sha256_uppercase():
+    with pytest.raises(ValidationError):
+        _audio_props(sha256_hash="A" * 64)
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +178,21 @@ def test_intake_result_invalid_no_props():
     obj = IntakeResult(valid=False, call_id="uuid-2", validation_error="unsupported format")
     assert obj.audio_properties is None
     assert obj.validation_error == "unsupported format"
+
+
+def test_intake_result_valid_without_audio_props_fails():
+    with pytest.raises(ValidationError, match="audio_properties"):
+        IntakeResult(valid=True, call_id="uuid-3", temp_file_path="/tmp/x.mp3")
+
+
+def test_intake_result_valid_without_temp_file_fails():
+    with pytest.raises(ValidationError, match="temp_file_path"):
+        IntakeResult(valid=True, call_id="uuid-4", audio_properties=_audio_props())
+
+
+def test_intake_result_invalid_without_error_fails():
+    with pytest.raises(ValidationError, match="validation_error"):
+        IntakeResult(valid=False, call_id="uuid-5")
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +230,11 @@ def test_injection_check_with_match():
 def test_injection_check_invalid_risk_level():
     with pytest.raises(ValidationError):
         InjectionCheckResult(matched=True, risk_level="extreme")
+
+
+def test_injection_check_matched_without_risk_level_fails():
+    with pytest.raises(ValidationError, match="risk_level"):
+        InjectionCheckResult(matched=True)
 
 
 # ---------------------------------------------------------------------------
@@ -385,11 +464,37 @@ def test_audit_event_custom_actor():
 
 
 def test_transcription_cache_entry_defaults():
-    obj = TranscriptionCacheEntry(sha256_hash="deadbeef", transcription_json='{"call_id": "c1"}')
+    obj = TranscriptionCacheEntry(sha256_hash=_SHA256, transcription_json='{"call_id": "c1"}')
     assert obj.hit_count == 0
     assert isinstance(obj.created_at, datetime)
 
 
 def test_transcription_cache_entry_explicit_hit_count():
-    obj = TranscriptionCacheEntry(sha256_hash="abc", transcription_json="{}", hit_count=5)
+    obj = TranscriptionCacheEntry(sha256_hash=_SHA256, transcription_json="{}", hit_count=5)
     assert obj.hit_count == 5
+
+
+def test_transcription_cache_entry_invalid_json():
+    with pytest.raises(ValidationError, match="valid JSON"):
+        TranscriptionCacheEntry(sha256_hash=_SHA256, transcription_json="not-json{")
+
+
+# ---------------------------------------------------------------------------
+# Extra: CallReport rejects naive datetime
+# ---------------------------------------------------------------------------
+
+
+def test_call_report_naive_datetime_fails():
+    dims = _all_dimensions(4.0)
+    qa = QAScoreResult(call_id="c1", dimensions=dims, overall_score=4.0)
+    with pytest.raises(ValidationError, match="timezone-aware"):
+        CallReport(
+            call_id="c1",
+            filename="call.mp3",
+            analyzed_at=datetime(2026, 1, 1, 12, 0, 0),  # naive — no tzinfo
+            audio_properties=_audio_props(),
+            transcription=_transcription(),
+            summary=_summary(),
+            qa_scores=qa,
+            status="completed",
+        )
