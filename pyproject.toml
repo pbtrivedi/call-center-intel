@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "call-center-intel"
+version = "0.1.0"
+description = "AI-Powered Multi-Agent Call Center Intelligence Pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    # Orchestration
+    "langgraph>=0.4",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",
+    "langchain-google-genai>=2.0",
+    "langchain-groq>=0.2",
+    # Speech-to-text
+    "faster-whisper>=1.0",
+    # Audio
+    "mutagen>=1.47",
+    # Data models
+    "pydantic>=2.0",
+    # Database
+    "sqlalchemy>=2.0",
+    # Web UI
+    "gradio>=5.0",
+    # PDF
+    "reportlab>=4.0",
+    # Observability
+    "langsmith>=0.1",
+    # Config
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "pre-commit>=3.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]

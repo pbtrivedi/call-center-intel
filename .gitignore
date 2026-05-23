@@ -1,0 +1,48 @@
+# Environment
+.env
+*.env
+
+# Runtime data
+data/audio/
+data/*.db
+logs/*.log
+logs/*.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Whisper model weights (downloaded at runtime)
+/models/
+
+# macOS
+.DS_Store
+
+# Requirements docs (local reference only)
+Requirements/
+
+# Word temp/lock files
+~$*
