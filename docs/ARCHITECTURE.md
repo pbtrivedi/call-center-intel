@@ -54,9 +54,12 @@ call-center-intel/
 │   │   └── observability_tab.py
 │   ├── models/               # 14 Pydantic contracts (stage I/O types)
 │   │   └── schemas.py
-│   └── config/               # YAML configs + env loader
-│       ├── loader.py
-│       └── settings.yaml
+│   ├── config/               # YAML configs + env loader
+│   │   ├── loader.py
+│   │   └── settings.yaml
+│   └── common/               # Shared infrastructure (no domain logic)
+│       ├── logger.py         # get_logger(name) factory → logs/app.log
+│       └── exceptions.py     # CallCenterIntelError hierarchy
 │
 ├── tests/
 │   ├── conftest.py           # Shared fixtures (mock LLM, mock Whisper, test DB)

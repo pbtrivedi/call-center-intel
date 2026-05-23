@@ -6,27 +6,48 @@ Eight iterations, each delivering a working, testable slice of the system. Build
 
 ---
 
-## Phase 1 — Foundation: Data Contracts & Config
+## Phase 1 — Foundation: Data Contracts, Config, Logger & Exceptions
 
-**Goal:** Establish the typed backbone that every other phase depends on. After this phase, all 14 Pydantic models exist and are validated, the config system reads from `.env` and `settings.yaml`, and the project installs cleanly.
+**Goal:** Establish the typed backbone that every other phase depends on. After this phase, all 14 Pydantic models exist and are validated, the config system reads from `.env` and `settings.yaml`, a structured application logger is wired up, and all custom exception types are defined. Every agent from Phase 2 onwards will import from this layer.
+
+> **Note on two different loggers:** This phase builds the *application logger* (structured log output to `logs/` files). The *audit logger* (compliance event log written to SQLite) is a separate component built in Phase 3 as part of the security layer — it has different concerns (append-only DB writes, surfaced in the Observability tab).
 
 ### What to Build
 - `src/models/schemas.py` — all 14 Pydantic v2 models:
   `AudioInput`, `IntakeResult`, `AudioProperties`, `TranscriptionResult`, `InjectionCheckResult`, `RedactedTranscript`, `SummaryResult`, `ActionItem`, `QAScoreResult`, `QADimension`, `ComplianceFlag`, `CallReport`, `AuditEvent`, `TranscriptionCacheEntry`
 - `src/config/loader.py` — reads `.env` + `settings.yaml`; exposes typed `Settings` object
 - `src/config/settings.yaml` — default values for all optional config keys
+- `src/common/logger.py` — application logger
+  - Structured log output (JSON or key=value) to `logs/app.log` and stdout
+  - `get_logger(name) -> Logger` factory used by every module
+  - Log level driven by `LOG_LEVEL` env var (default `INFO`)
+  - Rotating file handler with configurable max size
+- `src/common/exceptions.py` — custom exception hierarchy:
+  - `CallCenterIntelError` — base exception for all pipeline errors
+  - `AudioValidationError` — raised by intake agent (bad format, size, duration)
+  - `TranscriptionError` — raised by transcription agent
+  - `InjectionDetectedError` — raised when injection patterns match
+  - `PIIRedactionError` — raised on redaction failure
+  - `LLMAnalysisError` — raised by summarization or QA scoring agents
+  - `ReportGenerationError` — raised by report agent or PDF generator
+  - `PipelineError` — generic wrapper for unexpected pipeline failures
 
 ### Tests to Write (`tests/unit/`)
-- Valid construction of every model with required fields
+- Valid construction of every Pydantic model with required fields
 - Validation errors raised for invalid field values (e.g. score outside 1–5, unsupported severity)
 - `ComplianceFlag.severity` rejects values outside `low | medium | high | critical`
 - Config loader returns correct defaults when env vars are absent
 - Config loader overrides defaults when env vars are set
+- `get_logger()` returns a logger with the correct name and respects `LOG_LEVEL`
+- All custom exceptions are subclasses of `CallCenterIntelError`
+- Each exception carries the expected message and optional context fields
 
 ### Definition of Done
 - [ ] All 14 models importable and instantiable
 - [ ] `pip install -e .` succeeds from a clean clone
-- [ ] `make test-unit` passes with tests covering all models
+- [ ] `get_logger(__name__)` callable from any module; writes to `logs/app.log`
+- [ ] All 8 custom exception classes defined and importable
+- [ ] `make test-unit` passes with tests covering all models, logger, and exceptions
 - [ ] No hardcoded strings or magic values outside `schemas.py` or `settings.yaml`
 
 ---
@@ -303,7 +324,7 @@ Run through each manually with a real audio file from the Kaggle dataset:
 
 | Phase | Deliverable | Testable Output |
 |-------|------------|-----------------|
-| 1 | Data contracts + config | All 14 Pydantic models validate correctly |
+| 1 | Data contracts + config + logger + exceptions | All 14 Pydantic models validate; logger writes to file; all exception types importable |
 | 2 | Audio intake + transcription + cache | Upload audio → get speaker-labeled transcript |
 | 3 | Security layer | PII redacted; injection patterns blocked; audit log writes |
 | 4 | LLM analysis | Structured summary + deterministic QA scores from any provider |
