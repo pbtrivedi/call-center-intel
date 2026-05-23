@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -100,6 +100,11 @@ def test_audio_properties_optional_sample_rate_none():
     assert obj.sample_rate is None
 
 
+def test_audio_properties_invalid_format():
+    with pytest.raises(ValidationError):
+        _audio_props(format="ogg")
+
+
 # ---------------------------------------------------------------------------
 # 3. IntakeResult
 # ---------------------------------------------------------------------------
@@ -148,6 +153,11 @@ def test_injection_check_with_match():
     assert obj.risk_level == "high"
 
 
+def test_injection_check_invalid_risk_level():
+    with pytest.raises(ValidationError):
+        InjectionCheckResult(matched=True, risk_level="extreme")
+
+
 # ---------------------------------------------------------------------------
 # 6. RedactedTranscript
 # ---------------------------------------------------------------------------
@@ -171,7 +181,7 @@ def test_redacted_transcript_defaults():
 
 def test_action_item_with_deadline():
     obj = ActionItem(description="Send refund", owner="Agent", deadline="2025-06-01")
-    assert obj.deadline == "2025-06-01"
+    assert obj.deadline == date(2025, 6, 1)
 
 
 def test_action_item_no_deadline():
@@ -275,7 +285,13 @@ def test_compliance_flag_invalid_severity_uppercase():
 def test_qa_score_result_valid():
     dims = _all_dimensions(4.0)
     obj = QAScoreResult(call_id="c1", dimensions=dims, overall_score=4.0)
-    assert obj.overall_score == 4.0
+    assert obj.overall_score == pytest.approx(4.0, abs=1e-4)
+
+
+def test_qa_score_overall_always_computed():
+    dims = _all_dimensions(4.0)
+    obj = QAScoreResult(call_id="c1", dimensions=dims, overall_score=999)
+    assert obj.overall_score == pytest.approx(4.0, abs=1e-4)
 
 
 def test_compute_overall_uniform_scores():
@@ -295,6 +311,18 @@ def test_compute_overall_weighted_formula():
 def test_qa_weights_sum_to_one():
     total = sum(QAScoreResult.WEIGHTS.values())
     assert total == pytest.approx(1.0, abs=1e-9)
+
+
+def test_qa_dimensions_missing_dimension():
+    dims = [_qa_dimension(n) for n in ["professionalism", "empathy", "problem_resolution", "compliance"]]
+    with pytest.raises(ValidationError):
+        QAScoreResult(call_id="c1", dimensions=dims, overall_score=0.0)
+
+
+def test_qa_dimensions_duplicate_names():
+    dims = [_qa_dimension("empathy") for _ in range(5)]
+    with pytest.raises(ValidationError):
+        QAScoreResult(call_id="c1", dimensions=dims, overall_score=0.0)
 
 
 # ---------------------------------------------------------------------------

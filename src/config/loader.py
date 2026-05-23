@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -20,10 +20,10 @@ class Settings:
     max_temp_files: int
     log_level: str
     langsmith_project: str
-    langsmith_api_key: str
-    openai_api_key: str
-    gemini_api_key: str
-    groq_api_key: str
+    langsmith_api_key: str = field(repr=False)
+    openai_api_key: str = field(repr=False)
+    gemini_api_key: str = field(repr=False)
+    groq_api_key: str = field(repr=False)
 
 
 def get_settings() -> Settings:

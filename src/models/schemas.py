@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import ClassVar, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def _utcnow() -> datetime:
@@ -41,7 +41,7 @@ class AudioInput(BaseModel):
 
 
 class AudioProperties(BaseModel):
-    format: str  # 'wav' | 'mp3' | 'flac' | 'm4a'
+    format: Literal["wav", "mp3", "flac", "m4a"]
     duration_seconds: float
     file_size_bytes: int
     sha256_hash: str  # computed at intake; drives transcription cache lookup
@@ -85,7 +85,7 @@ class TranscriptionResult(BaseModel):
 class InjectionCheckResult(BaseModel):
     matched: bool
     matched_patterns: list[str] = Field(default_factory=list)
-    risk_level: str | None = None
+    risk_level: Literal["low", "medium", "high", "critical"] | None = None
     flagged_text: str | None = None
 
 
@@ -110,7 +110,7 @@ class RedactedTranscript(BaseModel):
 class ActionItem(BaseModel):
     description: str
     owner: str  # 'Agent', 'Customer', or a named party
-    deadline: str | None = None  # ISO date string e.g. '2025-06-01'
+    deadline: date | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +177,20 @@ class QAScoreResult(BaseModel):
         "compliance": 0.20,
         "clarity": 0.15,
     }
+
+    @field_validator("dimensions")
+    @classmethod
+    def _validate_dimensions(cls, v: list[QADimension]) -> list[QADimension]:
+        names = {d.name for d in v}
+        expected = set(cls.WEIGHTS)
+        if names != expected:
+            raise ValueError(f"dimensions must include exactly {expected}, got {names}")
+        return v
+
+    @model_validator(mode="after")
+    def _enforce_computed_score(self) -> "QAScoreResult":
+        object.__setattr__(self, "overall_score", self.compute_overall(self.dimensions))
+        return self
 
     @staticmethod
     def compute_overall(dimensions: list[QADimension]) -> float:
