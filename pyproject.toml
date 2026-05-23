@@ -40,6 +40,9 @@ dev = [
     "ruff>=0.4",
     "pre-commit>=3.0",
 ]
+mcp = [
+    "langchain-mcp-adapters>=0.1",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

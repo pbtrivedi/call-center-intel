@@ -169,6 +169,35 @@ Nine iterations, each delivering a working, testable slice of the system. Build 
   - Check: are dimension scores within ±1 of expected? Are justifications grounded in transcript text?
   - Check: does a known compliance violation in the fixture get flagged?
 
+### Optional MCP Enhancement
+
+> MCP servers are fetched **before** the LLM call and injected as additional prompt context — not as live tool calls during inference. This preserves determinism and auditability while grounding the LLM in real, current data.
+
+- `src/services/mcp_client.py` — thin wrapper using `langchain-mcp-adapters`
+  - `get_compliance_rules(call_type: str) -> str` — fetches rules from MCP Compliance Server
+  - `get_agent_benchmarks(call_type: str) -> str` — fetches historical score averages from MCP Stats Server
+  - Both functions return formatted strings injected into the LLM prompt; gracefully return empty string if MCP server is unavailable
+- `mcp_servers/compliance_rules_server.py` — MCP server exposing compliance rulebook
+  - Backed by `config/compliance_rules.yaml` — structured rules per call type (e.g. `credit_dispute`, `account_inquiry`, `billing_issue`)
+  - Tool: `get_compliance_rules(call_type)` → returns list of required disclosures and verification steps
+- `mcp_servers/historical_stats_server.py` — MCP server wrapping the SQLite read repository
+  - Tool: `get_agent_benchmarks(call_type)` → returns avg dimension scores across past calls of that type
+  - Tool: `get_recent_flags(call_type)` → returns most common compliance flags for context
+- Update `src/agents/qa_scoring_agent.py`:
+  - Before calling the LLM: fetch `get_compliance_rules(call_type)` and `get_agent_benchmarks(call_type)`
+  - Append results as a `### Reference Context` section in the scoring prompt
+  - LLM scores compliance against actual rules, not training memory
+
+**Call flow with MCP:**
+```
+qa_scoring_agent.run(state)
+  1. mcp_client.get_compliance_rules(call_type)   ← MCP Compliance Server
+  2. mcp_client.get_agent_benchmarks(call_type)   ← MCP Stats Server
+  3. Build prompt: transcript + summary + rules + benchmarks
+  4. LLM.invoke(prompt) → structured QAScoreResult
+  5. Recompute overall_score deterministically     ← unchanged
+```
+
 ### Tests to Write (`tests/unit/`)
 - LLM factory: returns correct class for each `LLM_PROVIDER` value
 - LLM factory: raises `ValueError` for unknown provider
@@ -177,6 +206,10 @@ Nine iterations, each delivering a working, testable slice of the system. Build 
 - QA scoring agent: `overall_score` from LLM is always ignored
 - QA scoring agent: weighted formula produces correct result for known dimension values
 - QA scoring agent: `critical` compliance flag correctly identified in result
+- MCP client: `get_compliance_rules()` returns empty string when MCP server is unavailable
+- MCP client: `get_agent_benchmarks()` returns formatted string for known call type
+- QA scoring agent: compliance rules injected into prompt when MCP client returns rules
+- QA scoring agent: functions correctly with empty MCP context (graceful degradation)
 
 ### Definition of Done
 - [ ] Call `summarization_agent.run()` with a mock LLM → get back a valid `SummaryResult`
@@ -186,6 +219,8 @@ Nine iterations, each delivering a working, testable slice of the system. Build 
 - [ ] `python evals/eval_summarization.py` runs against real LLM and prints pass/fail per fixture
 - [ ] `python evals/eval_qa_scoring.py` runs and confirms compliance flags fire on known violations
 - [ ] At least 3 eval fixtures created and labeled in `evals/fixtures/`
+- [ ] MCP servers start independently: `python mcp_servers/compliance_rules_server.py`
+- [ ] QA scoring agent runs correctly with MCP servers both up and down (graceful degradation tested)
 
 ---
 
@@ -425,7 +460,7 @@ For `WHISPER_MODEL=large-v3`, swap the Fargate task for an EC2-backed ECS cluste
 | 1 | Data contracts + config + logger + exceptions | All 14 Pydantic models validate; logger writes to file; all exception types importable |
 | 2 | Audio intake + transcription + cache | Upload audio → get speaker-labeled transcript |
 | 3 | Security layer | PII redacted; injection patterns blocked; audit log writes |
-| 4 | LLM analysis + component eval | Structured summary + deterministic QA scores; eval fixtures pass quality checks |
+| 4 | LLM analysis + component eval + MCP servers | Structured summary + deterministic QA scores; compliance rules grounded in rulebook; eval fixtures pass quality checks |
 | 5 | LangGraph pipeline + LangSmith tracing | `workflow.invoke()` routes through all 7 stages; traces visible in LangSmith |
 | 6 | Persistence + reports | PDF/JSON downloadable; call history survives restart |
 | 7 | Gradio web UI | All 6 evaluator scenarios pass in the browser |

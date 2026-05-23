@@ -184,6 +184,7 @@ Framework-agnostic. No LangGraph, no Gradio, no SQLAlchemy imports here. Contain
 - `whisper_model.py` — module-level singleton; `get_whisper_model()` is called once in `app.py`
 - `audio_utils.py` — magic-byte detection, `mutagen`-based metadata, temp file cleanup
 - `pdf_generator.py` — ReportLab builder; takes a `CallReport` and returns bytes
+- `mcp_client.py` — fetches context from MCP servers before LLM calls; returns empty string on failure (graceful degradation)
 
 ### `database/` — Persistence
 Three SQLAlchemy ORM tables:
@@ -247,6 +248,80 @@ Model name, API key, and timeout all come from environment variables. Switching 
 | OpenAI | GPT-4o | Paid | ~$0.03/call |
 | Gemini | 2.0 Flash | Free | 1,500 req/day |
 | Groq | Llama 3.3 70B | Free | 30 RPM |
+
+---
+
+## MCP Integration
+
+Two MCP servers provide external context to the QA scoring agent. They are fetched **before** the LLM call and injected as additional prompt context — not as live tool calls during inference. This preserves the pipeline's determinism while grounding compliance verdicts in real, current data rather than LLM training memory.
+
+### Why Pre-fetch, Not ReAct Tool Use
+
+The QA scoring agent uses `.with_structured_output()` — a single-shot call that returns a typed Pydantic object. Switching to a ReAct tool-use loop would introduce non-determinism and make the structured output schema harder to enforce. Pre-fetching context and appending it to the prompt gives the same grounding benefit with no change to the deterministic scoring pipeline.
+
+### MCP Servers
+
+```
+mcp_servers/
+├── compliance_rules_server.py   # Exposes config/compliance_rules.yaml
+└── historical_stats_server.py   # Wraps SQLite repository read methods
+```
+
+**Compliance Rules Server**
+- Backed by `config/compliance_rules.yaml` — a structured rulebook keyed by call type
+- Tool: `get_compliance_rules(call_type)` → required disclosures, verification steps, hold procedures
+- Example call types: `credit_dispute`, `account_inquiry`, `billing_issue`, `password_reset`
+
+**Historical Stats Server**
+- Wraps the read-only side of `database/repository.py`
+- Tool: `get_agent_benchmarks(call_type)` → avg dimension scores across past calls of that type
+- Tool: `get_recent_flags(call_type)` → most common compliance flags for context
+
+### Integration Pattern in QA Scoring Agent
+
+```python
+# agents/qa_scoring_agent.py
+def run(state: PipelineState) -> dict:
+    call_type = state["summary_result"].call_type
+
+    # Pre-fetch MCP context — empty string on server unavailability
+    compliance_rules  = mcp_client.get_compliance_rules(call_type)
+    score_benchmarks  = mcp_client.get_agent_benchmarks(call_type)
+
+    prompt = build_qa_prompt(
+        transcript=state["redacted_transcript"],
+        summary=state["summary_result"],
+        compliance_rules=compliance_rules,   # injected as ### Reference Context
+        benchmarks=score_benchmarks,
+    )
+
+    result = llm.with_structured_output(QAScoreResult).invoke(prompt)
+
+    # Always recompute — MCP context influences LLM reasoning, not the formula
+    result.overall_score = compute_weighted_score(result)
+    return {"qa_score_result": result}
+```
+
+### Graceful Degradation
+
+If either MCP server is unavailable, `mcp_client` returns an empty string and logs a warning. The QA scoring agent proceeds with the transcript and summary context only — no exceptions raised, no pipeline failure. This makes MCP an enhancement, not a dependency.
+
+| MCP Server Status | Pipeline Behaviour |
+|------------------|--------------------|
+| Both up | Full compliance grounding + benchmark context |
+| Compliance server down | Scores without rulebook; warning logged |
+| Stats server down | Scores without benchmarks; warning logged |
+| Both down | Scores on transcript + summary only; identical to pre-MCP behaviour |
+
+### Dependency
+
+```toml
+# pyproject.toml — optional extras
+[project.optional-dependencies]
+mcp = ["langchain-mcp-adapters>=0.1"]
+```
+
+Install with: `pip install -e ".[mcp]"`
 
 ---
 

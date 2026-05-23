@@ -1,0 +1,29 @@
+# Compliance rulebook — keyed by call_type
+# Populated during Phase 4 development.
+# Each call type lists required disclosures and verification steps the agent must follow.
+
+credit_dispute:
+  required_disclosures:
+    - Read the dispute rights disclosure before accessing account details
+    - Confirm dispute timeframe (60 days from statement date for most cards)
+  verification_steps:
+    - Verify full name and last 4 digits of card before any account access
+    - Confirm billing address or security question
+
+account_inquiry:
+  required_disclosures:
+    - Do not read back full account number or SSN at any point
+  verification_steps:
+    - Verify full name, date of birth, and last 4 digits of SSN
+
+billing_issue:
+  required_disclosures:
+    - Inform customer of their right to dispute charges in writing
+  verification_steps:
+    - Verify full name and account number before discussing balance details
+
+password_reset:
+  required_disclosures: []
+  verification_steps:
+    - Verify full name and registered email address
+    - Do not confirm or deny account existence to unverified callers
