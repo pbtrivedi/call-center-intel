@@ -1,6 +1,6 @@
 # Development Phases
 
-Eight iterations, each delivering a working, testable slice of the system. Build them in order — each phase depends on the previous one being solid before moving forward.
+Nine iterations, each delivering a working, testable slice of the system. Build them in order — each phase depends on the previous one being solid before moving forward.
 
 > **Rule:** Do not start the next phase until every item in the current phase's Definition of Done passes.
 
@@ -136,9 +136,11 @@ Eight iterations, each delivering a working, testable slice of the system. Build
 
 ---
 
-## Phase 4 — LLM Analysis: Summarization + QA Scoring + Provider Factory
+## Phase 4 — LLM Analysis: Summarization + QA Scoring + Provider Factory + Component Eval
 
-**Goal:** Given a redacted transcript, produce a structured summary and deterministic QA scorecard. After this phase, the two LLM analysis stages work independently and can be called with any of the three providers.
+**Goal:** Given a redacted transcript, produce a structured summary and deterministic QA scorecard. After this phase, the two LLM analysis stages work independently, can be called with any of the three providers, and their *output quality* has been validated against real transcripts — not just functional correctness.
+
+> **Why evaluation starts here, not later:** Prompts and structured output schemas are defined in this phase. Catching quality problems now (hallucinated summaries, poor QA justifications, miscalibrated scores) is far cheaper than discovering them after the full pipeline is wired. Evaluation is a feedback loop on prompt engineering, not just a final QA step.
 
 ### What to Build
 - `src/services/llm_factory.py`
@@ -152,9 +154,20 @@ Eight iterations, each delivering a working, testable slice of the system. Build
 - `src/agents/qa_scoring_agent.py`
   - Receives `RedactedTranscript` + `SummaryResult` as context
   - Structured output → five `QADimension` scores (1–5) with justifications and transcript timestamps
-  - Compliance flags with severity (`low | medium | high | critical`)
+  - Compliance flags with severity (`low | medium / high | critical`)
   - **After LLM responds:** discard `overall_score` from LLM; recompute deterministically:
     `overall = professionalism×0.15 + empathy×0.20 + problem_resolution×0.30 + compliance×0.20 + clarity×0.15`
+- `evals/fixtures/` — 3–5 hand-labeled transcripts with expected outputs
+  - Each fixture: a redacted transcript + expected `SummaryResult` fields + expected QA score ranges
+  - Source: Kaggle 911-recordings dataset; label manually before running evals
+- `evals/eval_summarization.py` — component-level evaluation script
+  - Run each fixture through the summarization agent with the real LLM
+  - Score output: does `call_purpose` match expected? Are `action_items` present and accurate?
+  - Log results to LangSmith (once tracing is added in Phase 5; use `print` for now)
+- `evals/eval_qa_scoring.py` — component-level evaluation script
+  - Run each fixture through QA scoring with the real LLM
+  - Check: are dimension scores within ±1 of expected? Are justifications grounded in transcript text?
+  - Check: does a known compliance violation in the fixture get flagged?
 
 ### Tests to Write (`tests/unit/`)
 - LLM factory: returns correct class for each `LLM_PROVIDER` value
@@ -170,12 +183,15 @@ Eight iterations, each delivering a working, testable slice of the system. Build
 - [ ] Call `qa_scoring_agent.run()` with a mock LLM → `overall_score` matches the formula, not the LLM value
 - [ ] `LLM_PROVIDER=groq make run` works without code changes
 - [ ] `make test-unit` passes all LLM agent tests (LLM always mocked)
+- [ ] `python evals/eval_summarization.py` runs against real LLM and prints pass/fail per fixture
+- [ ] `python evals/eval_qa_scoring.py` runs and confirms compliance flags fire on known violations
+- [ ] At least 3 eval fixtures created and labeled in `evals/fixtures/`
 
 ---
 
-## Phase 5 — Pipeline Orchestration: LangGraph State Machine
+## Phase 5 — Pipeline Orchestration: LangGraph State Machine + LangSmith
 
-**Goal:** Wire all agents into a single runnable pipeline. After this phase, one `workflow.invoke(state)` call processes audio end to end, with all routing, error isolation, and terminal nodes working correctly.
+**Goal:** Wire all agents into a single runnable pipeline with full observability. After this phase, one `workflow.invoke(state)` call processes audio end to end with all routing and error isolation working, and every LLM call is traced in LangSmith with token counts and per-node latency.
 
 ### What to Build
 - `src/graph/state.py` — `PipelineState` TypedDict with all stage result fields
@@ -189,6 +205,21 @@ Eight iterations, each delivering a working, testable slice of the system. Build
   - Wire conditional edges using routing functions
   - `workflow = graph.compile()` — module-level singleton
 - Error node: three-level message fallback (`state['error']` → `intake.validation_error` → generic)
+- **LangSmith integration** in `src/config/loader.py` and `app.py`:
+  - Set `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_PROJECT` from env vars on startup
+  - Tracing activates automatically for all LangChain/LangGraph calls when `LANGSMITH_API_KEY` is present
+  - If `LANGSMITH_API_KEY` is absent, pipeline runs normally with no tracing (graceful degradation)
+  - `get_langsmith_status() -> dict` — returns `{"enabled": bool, "project": str, "url": str | None}`; consumed by the Observability tab in Phase 7
+- **Update `evals/eval_*.py`** from Phase 4: replace `print` statements with LangSmith-logged results now that tracing is active
+
+### LangSmith Tracing Coverage
+| What Gets Traced | Where |
+|-----------------|-------|
+| Every LLM call (summarization, QA scoring) | Automatic via LangChain integration |
+| Full pipeline run per call (input → output) | LangGraph traces each node execution |
+| Token counts and cost estimate per call | Automatic via LangSmith |
+| Per-node latency breakdown | Automatic via LangGraph + LangSmith |
+| Retry attempts on LLM failures | Traced as child runs |
 
 ### Tests to Write (`tests/integration/`)
 - Happy path: valid MP3 → all 7 stages run → `CallReport` in final state (LLM + Whisper mocked)
@@ -197,12 +228,17 @@ Eight iterations, each delivering a working, testable slice of the system. Build
 - Critical compliance flag: QA returns `critical` flag → `supervisor_review` node reached
 - Non-critical flag: QA returns `high` flag → `report` node reached (not supervisor)
 - Each stage's exception is isolated: one stage raising does not corrupt other stage results
+- `get_langsmith_status()` returns `{"enabled": False}` when `LANGSMITH_API_KEY` is not set
+- `get_langsmith_status()` returns `{"enabled": True, "url": ...}` when key is present
 
 ### Definition of Done
 - [ ] `workflow.invoke(initial_state)` with a real (tiny) MP3 returns a complete `PipelineState`
 - [ ] All 6 routing scenarios tested and passing
 - [ ] A failing stage does not crash the process — `state['error']` is set and returned
 - [ ] `make test-integration` passes all pipeline routing tests
+- [ ] With `LANGSMITH_API_KEY` set: pipeline run appears in LangSmith dashboard with per-node traces
+- [ ] Without `LANGSMITH_API_KEY`: pipeline runs normally with no errors or warnings
+- [ ] Eval scripts from Phase 4 now log results as LangSmith feedback
 
 ---
 
@@ -291,9 +327,9 @@ Run through each manually with a real audio file from the Kaggle dataset:
 
 ---
 
-## Phase 8 — Production Readiness: Tests to 100+, Docker, Deployment
+## Phase 8 — Production Readiness: Tests to 100+, Batch Eval, Docker
 
-**Goal:** The submission is clean, complete, and passes from a cold clone. After this phase, a reviewer can follow the README, run `pytest tests/ -v`, and get 100+ passing tests, then run `docker compose up` and get a working app.
+**Goal:** The submission is clean, complete, and passes from a cold clone. This phase also closes the evaluation loop opened in Phase 4 — running a batch pipeline eval over the Kaggle dataset to confirm end-to-end quality before submission.
 
 ### What to Build / Complete
 - Fill any test gaps to reach 100+ total across all three suites
@@ -303,6 +339,10 @@ Run through each manually with a real audio file from the Kaggle dataset:
 - `pre-commit` config — `ruff` lint + format checks on every commit
 - Verify `.gitignore` excludes `data/audio/`, `data/*.db`, `.env`, model weights
 - GPU deployment note in README: set `WHISPER_MODEL=large-v3`; ensure CUDA drivers installed
+- `evals/eval_pipeline.py` — end-to-end batch evaluation script
+  - Run 5–10 Kaggle audio files through the full pipeline
+  - For each call: assert `TranscriptionResult` is populated, `SummaryResult` has all required fields, `QAScoreResult.overall_score` matches the weighted formula, no raw PII appears in the LLM inputs (verified via LangSmith traces)
+  - Log aggregate metrics to LangSmith: average QA score, provider latency comparison, token cost per call
 
 ### Test Coverage Checklist (reach 100+)
 | Suite | Target Count | Covers |
@@ -311,12 +351,70 @@ Run through each manually with a real audio file from the Kaggle dataset:
 | `tests/integration/` | ~25 | End-to-end pipeline (mocked LLM + Whisper), DB persistence, audit log, cache round-trip |
 | `tests/security/` | ~20 | 22+ injection patterns, PII format variants (phone, email, SSN, credit card), PII embedded in longer text |
 
+### Evaluation Quality Gates (before marking Done)
+| Check | Pass Condition |
+|-------|---------------|
+| Summarization accuracy | `call_purpose` is meaningful for all 5+ eval fixtures |
+| QA score calibration | `overall_score` within expected range (±0.5) for labeled fixtures |
+| PII non-leakage | LangSmith traces confirm no raw SSN/CC/email/phone in any LLM input |
+| Provider parity | All three providers (OpenAI, Gemini, Groq) produce structurally valid output |
+| Score determinism | Same transcript run twice → identical `overall_score` both times |
+
 ### Definition of Done
 - [ ] `git clone ... && pip install -e ".[dev]" && pytest tests/ -v` → 100+ passing, 0 failing
 - [ ] `docker compose up --build` → app reachable at `http://localhost:7860`
 - [ ] `make lint` passes with zero errors
+- [ ] `python evals/eval_pipeline.py` passes all quality gates above
 - [ ] No API keys, `.env`, or audio files committed to the repository
 - [ ] `README.md` allows a new reviewer to set up and run the app without asking questions
+
+---
+
+## Phase 9 — AWS Deployment
+
+**Goal:** The application runs as a managed container on AWS, with secrets stored securely, logs shipped to CloudWatch, and the SQLite database persisted on EFS. After this phase, the system is accessible via a public HTTPS endpoint without running anything locally.
+
+> This phase uses AWS CDK (Python) to define infrastructure as code, following the same pattern as the `infrastructure/stacks/` layout from related projects.
+
+### What to Build
+- `infrastructure/stacks/network_stack.py` — VPC with public/private subnets, NAT gateway
+- `infrastructure/stacks/secrets_stack.py`
+  - Store all API keys in AWS Secrets Manager: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `LANGSMITH_API_KEY`
+  - ECS task role granted read access to these secrets at runtime
+- `infrastructure/stacks/storage_stack.py`
+  - EFS file system for persistent SQLite (`data/calls.db`) and logs — survives container restarts
+  - ECR repository for the Docker image
+- `infrastructure/stacks/compute_stack.py`
+  - ECS Fargate service running the app container (CPU-only; `WHISPER_MODEL=base`)
+  - Application Load Balancer with HTTPS listener (ACM certificate)
+  - Container environment variables wired from Secrets Manager
+  - CloudWatch log group for container stdout/stderr
+  - Health check on `GET /` → Gradio's root
+- `infrastructure/app.py` — CDK app entry point; imports and chains all four stacks
+- `Makefile` additions: `cdk-deploy`, `cdk-destroy`, `ecr-push`
+
+### GPU Deployment Option
+For `WHISPER_MODEL=large-v3`, swap the Fargate task for an EC2-backed ECS cluster using a `g4dn.xlarge` (NVIDIA T4) instance. Set `ECS_ENABLE_GPU_SUPPORT=true` and use the GPU-optimised ECS AMI. Document this as an optional upgrade path in the README.
+
+### Environment Variable Mapping (local → AWS)
+| Local `.env` var | AWS Source |
+|-----------------|-----------|
+| `OPENAI_API_KEY` | Secrets Manager secret |
+| `GEMINI_API_KEY` | Secrets Manager secret |
+| `GROQ_API_KEY` | Secrets Manager secret |
+| `LANGSMITH_API_KEY` | Secrets Manager secret |
+| `DB_PATH` | `/mnt/efs/data/calls.db` (EFS mount) |
+| `WHISPER_MODEL` | ECS task definition environment variable |
+| `APP_PORT` | `7860` — ALB target group port |
+
+### Definition of Done
+- [ ] `make ecr-push` builds the Docker image and pushes to ECR
+- [ ] `make cdk-deploy` provisions all four stacks without errors
+- [ ] App is reachable at the ALB DNS name (or custom domain) over HTTPS
+- [ ] `data/calls.db` survives a container restart (EFS mount persists)
+- [ ] API keys are NOT in the task definition as plaintext — all come from Secrets Manager
+- [ ] Container logs appear in CloudWatch log group
+- [ ] `make cdk-destroy` tears down all resources cleanly
 
 ---
 
@@ -327,8 +425,9 @@ Run through each manually with a real audio file from the Kaggle dataset:
 | 1 | Data contracts + config + logger + exceptions | All 14 Pydantic models validate; logger writes to file; all exception types importable |
 | 2 | Audio intake + transcription + cache | Upload audio → get speaker-labeled transcript |
 | 3 | Security layer | PII redacted; injection patterns blocked; audit log writes |
-| 4 | LLM analysis | Structured summary + deterministic QA scores from any provider |
-| 5 | LangGraph pipeline | `workflow.invoke()` routes correctly through all 7 stages |
+| 4 | LLM analysis + component eval | Structured summary + deterministic QA scores; eval fixtures pass quality checks |
+| 5 | LangGraph pipeline + LangSmith tracing | `workflow.invoke()` routes through all 7 stages; traces visible in LangSmith |
 | 6 | Persistence + reports | PDF/JSON downloadable; call history survives restart |
 | 7 | Gradio web UI | All 6 evaluator scenarios pass in the browser |
-| 8 | Production readiness | 100+ tests pass; Docker build works; clean GitHub submission |
+| 8 | Production readiness + batch eval | 100+ tests pass; Docker build works; pipeline quality gates pass |
+| 9 | AWS deployment | App live on HTTPS; secrets in Secrets Manager; DB on EFS; logs in CloudWatch |
