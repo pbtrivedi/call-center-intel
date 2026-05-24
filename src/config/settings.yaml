@@ -1,0 +1,9 @@
+llm_provider: openai
+whisper_model: base
+max_file_size_mb: 50
+max_duration_minutes: 60
+db_path: data/calls.db
+app_port: 7860
+max_temp_files: 10
+log_level: INFO
+langsmith_project: call-center-intel
