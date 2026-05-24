@@ -43,12 +43,14 @@ Nine iterations, each delivering a working, testable slice of the system. Build 
 - Each exception carries the expected message and optional context fields
 
 ### Definition of Done
-- [ ] All 14 models importable and instantiable
-- [ ] `pip install -e .` succeeds from a clean clone
-- [ ] `get_logger(__name__)` callable from any module; writes to `logs/app.log`
-- [ ] All 8 custom exception classes defined and importable
-- [ ] `make test-unit` passes with tests covering all models, logger, and exceptions
-- [ ] No hardcoded strings or magic values outside `schemas.py` or `settings.yaml`
+- [x] All 14 models importable and instantiable
+- [x] `pip install -e .` succeeds from a clean clone
+- [x] `get_logger(__name__)` callable from any module; writes to `logs/app.log`
+- [x] All 8 custom exception classes defined and importable (`ConfigurationError` added as 9th)
+- [x] `make test-unit` passes with tests covering all models, logger, and exceptions (118 tests)
+- [x] No hardcoded strings or magic values outside `schemas.py` or `settings.yaml`
+
+**Completed:** 2026-05-24 — PR #1 merged (`f7b4699`). Second review follow-up (`a8a0eb1`) added `ConfigurationError`, `frozen=True` on all schemas, cross-field validators, sha256/confidence/speaker/JSON validators, thread-safe `get_settings()`, and env-var error handling.
 
 ---
 
