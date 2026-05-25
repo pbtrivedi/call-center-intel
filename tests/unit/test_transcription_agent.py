@@ -322,3 +322,75 @@ def test_external_cache_shared_between_agents():
     result = agent2.run(_make_intake())
 
     assert result.from_cache is True
+
+
+# ---------------------------------------------------------------------------
+# Diarization — refined patterns
+# ---------------------------------------------------------------------------
+
+
+def test_outbound_agent_calling_labeled_agent():
+    # "I'm calling you from" is an outbound agent phrase, not a customer phrase
+    segs = [
+        _make_raw("Hello, my name is Steven. I'm calling you from finance department.", start=8.0, end=13.0),
+    ]
+    assert _assign_speakers(segs) == ["Agent"]
+
+
+def test_im_calling_about_labeled_customer():
+    # "I'm calling about" is a customer phrase
+    segs = [
+        _make_raw("Hi, I'm calling about an incorrect charge on my account.", start=0.0, end=3.0),
+    ]
+    assert _assign_speakers(segs) == ["Customer"]
+
+
+def test_im_calling_regarding_labeled_customer():
+    segs = [_make_raw("I'm calling regarding my recent bill.", start=0.0, end=2.0)]
+    assert _assign_speakers(segs) == ["Customer"]
+
+
+def test_wonderful_labeled_agent():
+    segs = [_make_raw("Wonderful, I can see your account now.", start=0.0, end=2.0)]
+    assert _assign_speakers(segs) == ["Agent"]
+
+
+def test_excellent_labeled_agent():
+    segs = [_make_raw("Excellent, let me pull that up for you.", start=0.0, end=2.0)]
+    assert _assign_speakers(segs) == ["Agent"]
+
+
+def test_agent_continues_without_gap():
+    # Consecutive agent sentences with no gap must stay Agent
+    segs = [
+        _make_raw("Hello, thank you for calling.", start=0.0, end=2.0),
+        _make_raw("I'm calling you from our billing department.", start=2.1, end=5.0),
+    ]
+    assert _assign_speakers(segs) == ["Agent", "Agent"]
+
+
+# ---------------------------------------------------------------------------
+# Confidence filter — hallucination suppression
+# ---------------------------------------------------------------------------
+
+
+def test_low_confidence_segment_dropped():
+    # avg_logprob=-2.0, no_speech_prob=0.9 → confidence ≈ 0.0
+    segs = [
+        _make_raw("Hallucinated noise text.", start=0.0, end=12.0, avg_logprob=-2.0, no_speech_prob=0.9),
+        _make_raw("Hello, how can I help?", start=12.5, end=15.0, avg_logprob=-0.2, no_speech_prob=0.05),
+    ]
+    model = _make_mock_model(segs)
+    agent = TranscriptionAgent(model_factory=lambda: model)
+    result = agent.run(_make_intake())
+    assert len(result.segments) == 1
+    assert "Hallucinated" not in result.full_text
+
+
+def test_borderline_confidence_segment_kept():
+    # avg_logprob=-0.5, no_speech_prob=0.3 → confidence = 0.5 * 0.7 = 0.35 (well above 0.05)
+    segs = [_make_raw("Can I help you?", start=0.0, end=2.0, avg_logprob=-0.5, no_speech_prob=0.3)]
+    model = _make_mock_model(segs)
+    agent = TranscriptionAgent(model_factory=lambda: model)
+    result = agent.run(_make_intake())
+    assert len(result.segments) == 1

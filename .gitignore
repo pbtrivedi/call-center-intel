@@ -24,6 +24,14 @@ venv/
 .venv/
 env/
 
+# Kaggle credentials and downloaded datasets
+.kaggle/
+kaggle.json
+
+# Temp audio files created at runtime
+data/temp/
+!data/temp/.gitkeep
+
 # Testing
 .pytest_cache/
 .coverage

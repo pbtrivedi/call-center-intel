@@ -16,15 +16,21 @@ from src.services.whisper_model import get_whisper_model
 # ---------------------------------------------------------------------------
 
 _GAP_THRESHOLD = 1.5  # seconds of silence before considering a speaker change
+_MIN_CONFIDENCE = 0.05  # below this, the segment is very likely hallucinated by Whisper
 
 _AGENT_RE = re.compile(
     r"\b(I can help|let me|your account|sir|ma'am|I'll|we can|our system"
-    r"|thank you for calling|I'm happy to|one moment|I see here)\b",
+    r"|thank you for calling|I'm happy to|one moment|I see here"
+    r"|wonderful|excellent|absolutely|I would like to guide)\b"
+    r"|I'?m calling (you|you from|from|on behalf|to help)"
+    r"|calling (you )?to help",
     re.IGNORECASE,
 )
 _CUSTOMER_RE = re.compile(
-    r"\b(I need|my account|I want|can you|please help|I'm calling"
-    r"|I was charged|I have a problem|I don't understand|why was I)\b",
+    r"\b(I need|my account|I want|please help"
+    r"|I was charged|I have a problem|I don't understand|why was I"
+    r"|I haven't received|my bill|my order)\b"
+    r"|I'?m calling (about|regarding|because|to cancel|to dispute|to close)",
     re.IGNORECASE,
 )
 
@@ -132,6 +138,13 @@ class TranscriptionAgent:
         for raw, speaker in zip(raw_segments, speakers):
             cleaned = _clean_text(raw.text)
             if not cleaned:
+                continue
+            confidence = _compute_confidence(raw.avg_logprob, raw.no_speech_prob)
+            if confidence < _MIN_CONFIDENCE:
+                self._logger.debug(
+                    "dropping low-confidence segment start=%.1fs conf=%.4f text=%r",
+                    raw.start, confidence, cleaned[:60],
+                )
                 continue
             final_segments.append(
                 TranscriptionSegment(
