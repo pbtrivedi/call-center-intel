@@ -90,11 +90,13 @@ Nine iterations, each delivering a working, testable slice of the system. Build 
 - SHA-256 of identical bytes always produces the same hash
 
 ### Definition of Done
-- [ ] Upload a real MP3 → get back a `TranscriptionResult` with speaker-labeled segments
-- [ ] Same file uploaded twice → second call returns faster (cache path taken)
-- [ ] Unsupported file format returns a clear rejection message
-- [ ] `make test-unit` passes all intake and transcription tests
-- [ ] Whisper model is NOT loaded during test runs (mocked)
+- [x] Upload a real MP3 → get back a `TranscriptionResult` with speaker-labeled segments
+- [x] Same file uploaded twice → second call returns faster (cache path taken)
+- [x] Unsupported file format returns a clear rejection message
+- [x] `make test-unit` passes all intake and transcription tests (190 tests)
+- [x] Whisper model is NOT loaded during test runs (mocked)
+
+**Completed:** 2026-05-24 — PR #2 merged (`3551e7a`). Includes diarization fix (removed bare "I'm calling" from `_CUSTOMER_RE`; added outbound agent patterns) and hallucination suppression (`_MIN_CONFIDENCE=0.05` confidence gate). Tested with real Kaggle call-center audio.
 
 ---
 
