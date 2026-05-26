@@ -1,0 +1,42 @@
+{
+  "id": "fixture_01",
+  "description": "Billing dispute — double charge — resolved with refund",
+  "call_type": "billing_issue",
+  "transcript": {
+    "call_id": "fixture-01",
+    "full_text": "[00:00] Agent: Thank you for calling Acme Support, my name is Jordan. How can I help you today?\n[00:06] Customer: Hi Jordan, I was charged twice for the same order this month and I need to get that fixed.\n[00:12] Agent: I'm sorry to hear that. I'd be happy to help. Can I get your full name and account number please?\n[00:17] Customer: Sure, it's Maria Chen, account number 7734-2201.\n[00:23] Agent: Thank you Maria. I can see two charges of $49.99 on the 12th. That does appear to be a duplicate. I'll process a refund for the second charge right away.\n[00:35] Customer: Great, how long will that take?\n[00:38] Agent: Typically 3 to 5 business days to appear on your statement.\n[00:42] Customer: That works. Thank you for sorting that out so quickly.\n[00:45] Agent: Of course. Is there anything else I can help you with today?\n[00:48] Customer: No, that's all. Thanks Jordan.\n[00:50] Agent: Have a great day Maria. Goodbye.",
+    "segments": [
+      {"speaker": "Agent", "text": "Thank you for calling Acme Support, my name is Jordan. How can I help you today?", "start_time": 0, "end_time": 6, "confidence": 0.95},
+      {"speaker": "Customer", "text": "Hi Jordan, I was charged twice for the same order this month and I need to get that fixed.", "start_time": 6, "end_time": 12, "confidence": 0.93},
+      {"speaker": "Agent", "text": "I'm sorry to hear that. I'd be happy to help. Can I get your full name and account number please?", "start_time": 12, "end_time": 17, "confidence": 0.96},
+      {"speaker": "Customer", "text": "Sure, it's Maria Chen, account number 7734-2201.", "start_time": 17, "end_time": 23, "confidence": 0.94},
+      {"speaker": "Agent", "text": "Thank you Maria. I can see two charges of $49.99 on the 12th. That does appear to be a duplicate. I'll process a refund for the second charge right away.", "start_time": 23, "end_time": 35, "confidence": 0.97},
+      {"speaker": "Customer", "text": "Great, how long will that take?", "start_time": 35, "end_time": 38, "confidence": 0.98},
+      {"speaker": "Agent", "text": "Typically 3 to 5 business days to appear on your statement.", "start_time": 38, "end_time": 42, "confidence": 0.96},
+      {"speaker": "Customer", "text": "That works. Thank you for sorting that out so quickly.", "start_time": 42, "end_time": 45, "confidence": 0.95},
+      {"speaker": "Agent", "text": "Of course. Is there anything else I can help you with today?", "start_time": 45, "end_time": 48, "confidence": 0.97},
+      {"speaker": "Customer", "text": "No, that's all. Thanks Jordan.", "start_time": 48, "end_time": 50, "confidence": 0.98},
+      {"speaker": "Agent", "text": "Have a great day Maria. Goodbye.", "start_time": 50, "end_time": 53, "confidence": 0.99}
+    ],
+    "language": "en",
+    "duration_seconds": 53,
+    "sha256_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+  },
+  "expected": {
+    "summary": {
+      "call_purpose": "Customer reported a duplicate charge and requested a refund",
+      "resolution_status": "resolved",
+      "sentiment_trajectory": "frustrated → satisfied"
+    },
+    "qa_scores": {
+      "professionalism": {"min": 4.0, "max": 5.0},
+      "empathy": {"min": 3.5, "max": 5.0},
+      "problem_resolution": {"min": 4.0, "max": 5.0},
+      "compliance": {"min": 2.5, "max": 4.0},
+      "clarity": {"min": 4.0, "max": 5.0},
+      "overall_min": 3.5,
+      "overall_max": 5.0
+    },
+    "compliance_notes": "Agent verified name and account but did not inform customer of their right to dispute in writing (billing_issue requirement). Expect a low/medium compliance flag."
+  }
+}

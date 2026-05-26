@@ -1,0 +1,44 @@
+{
+  "id": "fixture_03",
+  "description": "Credit card dispute — charge not recognised — escalated to disputes team",
+  "call_type": "credit_dispute",
+  "transcript": {
+    "call_id": "fixture-03",
+    "full_text": "[00:00] Agent: Thank you for calling Acme Card Services. This is Alex. How can I assist you?\n[00:06] Customer: I have a charge on my card I don't recognise. It's for $320 from a company called TechBuy.\n[00:13] Agent: I'm sorry to hear that. Before I access your account, I need to verify your identity. Can I get your full name and the last 4 digits of your card?\n[00:21] Customer: My name is Sarah Williams, last 4 digits are 4821.\n[00:25] Agent: Thank you Sarah. I also need to read you a disclosure before we proceed. You have the right to dispute this charge within 60 days of your statement date. We will investigate and you won't be held liable during the review. Do you understand?\n[00:38] Customer: Yes, I understand.\n[00:40] Agent: I can see the charge from TechBuy for $320 on the 8th. I'm going to escalate this to our disputes team who will contact you within 3 to 5 business days.\n[00:51] Customer: Okay. Will I get a provisional credit in the meantime?\n[00:55] Agent: For disputed charges over $100 we typically issue a provisional credit within 24 hours. I've flagged your account for that.\n[01:03] Customer: Perfect. Thank you for explaining everything so clearly.\n[01:06] Agent: Of course Sarah. Is there anything else I can help with?\n[01:09] Customer: No that's all, thanks.\n[01:11] Agent: Thank you for calling. Goodbye.",
+    "segments": [
+      {"speaker": "Agent", "text": "Thank you for calling Acme Card Services. This is Alex. How can I assist you?", "start_time": 0, "end_time": 6, "confidence": 0.97},
+      {"speaker": "Customer", "text": "I have a charge on my card I don't recognise. It's for $320 from a company called TechBuy.", "start_time": 6, "end_time": 13, "confidence": 0.94},
+      {"speaker": "Agent", "text": "I'm sorry to hear that. Before I access your account, I need to verify your identity. Can I get your full name and the last 4 digits of your card?", "start_time": 13, "end_time": 21, "confidence": 0.96},
+      {"speaker": "Customer", "text": "My name is Sarah Williams, last 4 digits are 4821.", "start_time": 21, "end_time": 25, "confidence": 0.95},
+      {"speaker": "Agent", "text": "Thank you Sarah. I also need to read you a disclosure before we proceed. You have the right to dispute this charge within 60 days of your statement date. We will investigate and you won't be held liable during the review. Do you understand?", "start_time": 25, "end_time": 38, "confidence": 0.97},
+      {"speaker": "Customer", "text": "Yes, I understand.", "start_time": 38, "end_time": 40, "confidence": 0.99},
+      {"speaker": "Agent", "text": "I can see the charge from TechBuy for $320 on the 8th. I'm going to escalate this to our disputes team who will contact you within 3 to 5 business days.", "start_time": 40, "end_time": 51, "confidence": 0.96},
+      {"speaker": "Customer", "text": "Okay. Will I get a provisional credit in the meantime?", "start_time": 51, "end_time": 55, "confidence": 0.95},
+      {"speaker": "Agent", "text": "For disputed charges over $100 we typically issue a provisional credit within 24 hours. I've flagged your account for that.", "start_time": 55, "end_time": 63, "confidence": 0.97},
+      {"speaker": "Customer", "text": "Perfect. Thank you for explaining everything so clearly.", "start_time": 63, "end_time": 66, "confidence": 0.98},
+      {"speaker": "Agent", "text": "Of course Sarah. Is there anything else I can help with?", "start_time": 66, "end_time": 69, "confidence": 0.97},
+      {"speaker": "Customer", "text": "No that's all, thanks.", "start_time": 69, "end_time": 71, "confidence": 0.99},
+      {"speaker": "Agent", "text": "Thank you for calling. Goodbye.", "start_time": 71, "end_time": 73, "confidence": 0.99}
+    ],
+    "language": "en",
+    "duration_seconds": 73,
+    "sha256_hash": "c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+  },
+  "expected": {
+    "summary": {
+      "call_purpose": "Customer disputed an unrecognised charge of $320 from TechBuy",
+      "resolution_status": "escalated",
+      "sentiment_trajectory": "concerned → reassured"
+    },
+    "qa_scores": {
+      "professionalism": {"min": 4.0, "max": 5.0},
+      "empathy": {"min": 3.5, "max": 5.0},
+      "problem_resolution": {"min": 3.5, "max": 5.0},
+      "compliance": {"min": 4.0, "max": 5.0},
+      "clarity": {"min": 4.0, "max": 5.0},
+      "overall_min": 3.8,
+      "overall_max": 5.0
+    },
+    "compliance_notes": "Agent correctly read dispute rights disclosure and verified identity before account access. No compliance violations expected."
+  }
+}

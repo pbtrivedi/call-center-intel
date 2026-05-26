@@ -1,0 +1,41 @@
+{
+  "id": "fixture_02",
+  "description": "Account inquiry — agent reads back full account number — critical compliance violation",
+  "call_type": "account_inquiry",
+  "transcript": {
+    "call_id": "fixture-02",
+    "full_text": "[00:00] Agent: Acme customer service, this is Priya.\n[00:04] Customer: Hi, I need to check my account balance.\n[00:07] Agent: Sure, what's your name?\n[00:09] Customer: David Park.\n[00:11] Agent: Okay David, your account number is 9981-2234-0056 and your balance is $1,240.00.\n[00:19] Customer: Wait, you just said my full account number out loud. Is that safe?\n[00:23] Agent: Oh, yes it's fine, don't worry about it.\n[00:26] Customer: I'm not comfortable with that. Who else could be listening?\n[00:30] Agent: It's just a phone call. Is there anything else?\n[00:33] Customer: No. I'm going to file a complaint.",
+    "segments": [
+      {"speaker": "Agent", "text": "Acme customer service, this is Priya.", "start_time": 0, "end_time": 4, "confidence": 0.97},
+      {"speaker": "Customer", "text": "Hi, I need to check my account balance.", "start_time": 4, "end_time": 7, "confidence": 0.95},
+      {"speaker": "Agent", "text": "Sure, what's your name?", "start_time": 7, "end_time": 9, "confidence": 0.98},
+      {"speaker": "Customer", "text": "David Park.", "start_time": 9, "end_time": 11, "confidence": 0.99},
+      {"speaker": "Agent", "text": "Okay David, your account number is 9981-2234-0056 and your balance is $1,240.00.", "start_time": 11, "end_time": 19, "confidence": 0.96},
+      {"speaker": "Customer", "text": "Wait, you just said my full account number out loud. Is that safe?", "start_time": 19, "end_time": 23, "confidence": 0.94},
+      {"speaker": "Agent", "text": "Oh, yes it's fine, don't worry about it.", "start_time": 23, "end_time": 26, "confidence": 0.95},
+      {"speaker": "Customer", "text": "I'm not comfortable with that. Who else could be listening?", "start_time": 26, "end_time": 30, "confidence": 0.93},
+      {"speaker": "Agent", "text": "It's just a phone call. Is there anything else?", "start_time": 30, "end_time": 33, "confidence": 0.97},
+      {"speaker": "Customer", "text": "No. I'm going to file a complaint.", "start_time": 33, "end_time": 36, "confidence": 0.96}
+    ],
+    "language": "en",
+    "duration_seconds": 36,
+    "sha256_hash": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3"
+  },
+  "expected": {
+    "summary": {
+      "call_purpose": "Customer requested account balance information",
+      "resolution_status": "escalated",
+      "sentiment_trajectory": "neutral → angry"
+    },
+    "qa_scores": {
+      "professionalism": {"min": 1.0, "max": 3.0},
+      "empathy": {"min": 1.0, "max": 2.5},
+      "problem_resolution": {"min": 1.0, "max": 2.5},
+      "compliance": {"min": 1.0, "max": 2.0},
+      "clarity": {"min": 2.0, "max": 3.5},
+      "overall_min": 1.0,
+      "overall_max": 2.5
+    },
+    "compliance_notes": "Agent read full account number — explicit critical violation per account_inquiry rules ('Do not read back full account number'). Also failed to verify identity before data access. Expect at least one critical compliance flag."
+  }
+}
