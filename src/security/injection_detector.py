@@ -91,8 +91,10 @@ _PATTERNS: list[_Pattern] = [
     ), "medium"),
 
     # --- Conversation / context injection ---
+    # Only LLM-native labels (Human, User, AI) — call-center labels like
+    # Customer: and Assistant: are legitimate transcript formatting and must not fire.
     _Pattern("INJECT_HUMAN", re.compile(
-        r"\n\s*(Human|User|Customer|Assistant|AI)\s*:\s*",
+        r"\n\s*(Human|User|AI)\s*:\s*",
         re.IGNORECASE,
     ), "high"),
     _Pattern("INJECT_SEPARATOR", re.compile(
@@ -134,7 +136,7 @@ def detect_injection(text: str) -> InjectionCheckResult:
     """Scan text for prompt injection patterns. Returns InjectionCheckResult."""
     matched_names: list[str] = []
     max_risk = -1
-    first_match: str | None = None
+    highest_risk_snippet: str | None = None
 
     for pattern in _PATTERNS:
         m = pattern.regex.search(text)
@@ -143,7 +145,7 @@ def detect_injection(text: str) -> InjectionCheckResult:
             level = _RISK_ORDER[pattern.risk_level]
             if level > max_risk:
                 max_risk = level
-                first_match = m.group(0)
+                highest_risk_snippet = m.group(0)
 
     if not matched_names:
         return InjectionCheckResult(matched=False)
@@ -152,5 +154,5 @@ def detect_injection(text: str) -> InjectionCheckResult:
         matched=True,
         matched_patterns=matched_names,
         risk_level=_RISK_LABELS[max_risk],
-        flagged_text=first_match,
+        flagged_text=highest_risk_snippet,
     )

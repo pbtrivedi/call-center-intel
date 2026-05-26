@@ -17,11 +17,20 @@ class _PIIPattern(NamedTuple):
     regex: re.Pattern[str]
 
 
+class _Match(NamedTuple):
+    start: int
+    end: int
+    replacement: str
+    pii_type: str
+
+
 _PII_PATTERNS: list[_PIIPattern] = [
-    # SSN — 123-45-6789 / 123 45 6789 / 123456789
+    # SSN — 123-45-6789 / 123 45 6789
+    # Bare 9-digit form only fires when preceded by an explicit SSN keyword to
+    # avoid false-positives on account numbers, confirmation codes, order IDs, etc.
     _PIIPattern("[REDACTED_SSN]", "SSN", re.compile(
         r"\b\d{3}[-\s]\d{2}[-\s]\d{4}\b"
-        r"|\b\d{9}\b",
+        r"|\b(?:ssn|social\s+security(?:\s+number)?)\s*[:#\-]?\s*\d{9}\b",
         re.IGNORECASE,
     )),
 
@@ -63,12 +72,6 @@ def _redact_text(text: str) -> tuple[str, list[str], int]:
     Returns (redacted_text, [pii_types_found], match_count).
     """
     # Collect all matches first
-    class _Match(NamedTuple):
-        start: int
-        end: int
-        replacement: str
-        pii_type: str
-
     all_matches: list[_Match] = []
     for pattern in _PII_PATTERNS:
         for m in pattern.regex.finditer(text):
@@ -114,12 +117,10 @@ def redact(transcript: TranscriptionResult) -> RedactedTranscript:
 
         redacted_segments: list[TranscriptionSegment] = []
         all_types: set[str] = set(types_in_full)
-        total_count = count_full
 
         for seg in transcript.segments:
-            redacted_seg_text, seg_types, seg_count = _redact_text(seg.text)
+            redacted_seg_text, seg_types, _ = _redact_text(seg.text)
             all_types.update(seg_types)
-            total_count += seg_count
             # Rebuild frozen segment with redacted text
             redacted_segments.append(
                 TranscriptionSegment(
@@ -136,7 +137,7 @@ def redact(transcript: TranscriptionResult) -> RedactedTranscript:
             full_text=redacted_full,
             segments=redacted_segments,
             redacted_types=sorted(all_types),
-            redaction_count=total_count,
+            redaction_count=count_full,
         )
 
     except Exception as e:

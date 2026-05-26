@@ -338,6 +338,10 @@ def test_clean_result_shape():
     "Let me transfer you to our billing department.",
     "I understand your frustration. Let me see what I can do.",
     "We can offer you a discount on your next bill.",
+    # Multi-turn call-center transcripts — Customer: and Assistant: are domain labels
+    "\nCustomer: My billing question is why was I charged twice.",
+    "\nCustomer: What is my balance?\nAssistant: Your balance is $45.00.",
+    "\nAssistant: Thank you for calling. How can I help?\nCustomer: I need a refund.",
 ])
 def test_no_false_positives_on_clean_text(clean_text):
     _assert_clean(clean_text)

@@ -19,6 +19,6 @@ def log_event(call_id: str, action: str, details: dict | None = None) -> None:
         "call_id": call_id,
         "action": action,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "details": details or {},
+        "details": details,
     }
     _logger.info("audit event=%s", json.dumps(entry))

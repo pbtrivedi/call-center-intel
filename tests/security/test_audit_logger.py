@@ -29,13 +29,13 @@ def test_log_event_emits_structured_log():
         assert entry["details"]["matched"] is False
 
 
-def test_log_event_no_details_uses_empty_dict():
+def test_log_event_no_details_is_null():
     with patch("src.security.audit_logger._logger") as mock_log:
         log_event("call-xyz", "intake_validated")
         call_args = mock_log.info.call_args
         logged_json = call_args[0][1]
         entry = json.loads(logged_json)
-        assert entry["details"] == {}
+        assert entry["details"] is None
 
 
 def test_log_event_timestamp_is_iso_format():

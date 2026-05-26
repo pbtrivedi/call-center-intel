@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from src.models.schemas import TranscriptionResult, TranscriptionSegment
+from src.security.injection_detector import detect_injection
 from src.security.pii_redactor import _redact_text, redact
 
 # ---------------------------------------------------------------------------
@@ -246,13 +247,14 @@ def test_redact_no_pii_returns_unchanged_text():
 
 
 def test_redact_count_accurate():
-    # Two distinct PII items in full_text + one in segment = 3 total replacements
+    # full_text is the authoritative source — count reflects unique PII in the
+    # complete transcript and does not double-count items also present in segments.
     transcript = _make_transcript(
-        full_text="SSN 123-45-6789 and card 4111111111111111",
-        segments=[("Customer", "email is user@test.com")],
+        full_text="SSN 123-45-6789, card 4111111111111111, email user@test.com",
+        segments=[("Customer", "SSN 123-45-6789")],
     )
     result = redact(transcript)
-    assert result.redaction_count >= 3
+    assert result.redaction_count == 3
 
 
 def test_redact_types_sorted():
@@ -289,7 +291,6 @@ def test_clean_transcript_passes_injection_check_after_redact():
         "My card is 4111111111111111. Please help.",
         segments=[("Customer", "My card is 4111111111111111. Please help.")],
     )
-    from src.security.injection_detector import detect_injection
     result = redact(transcript)
     check = detect_injection(result.full_text)
     assert check.matched is False
