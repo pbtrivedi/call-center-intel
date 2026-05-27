@@ -1,6 +1,7 @@
 """Tests for src/agents/qa_scoring_agent.py."""
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -60,12 +61,10 @@ def _make_dimensions(scores: dict[str, float] | None = None) -> list[QADimension
 
 
 def _make_llm_output(dimensions=None, compliance_flags=None, overall_score=9.9):
-    """Build a _LLMQAOutput instance with configurable overall_score."""
+    """Return a namespace matching _LLMQAOutput's interface."""
     dims = dimensions or _make_dimensions()
     flags = compliance_flags or []
-    # Bypass QAScoreResult's validator by constructing _LLMQAOutput directly
-    from src.agents.qa_scoring_agent import _LLMQAOutput
-    return _LLMQAOutput(
+    return SimpleNamespace(
         call_id="qa-call",
         dimensions=dims,
         compliance_flags=flags,
@@ -91,7 +90,8 @@ def test_overall_score_is_recomputed_not_taken_from_llm():
     llm = _mock_llm(llm_output)
     with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
     assert result.overall_score != 9.9
 
 
@@ -109,7 +109,8 @@ def test_overall_score_matches_weighted_formula():
     llm = _mock_llm(llm_output)
     with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
     assert abs(result.overall_score - expected) < 0.0001
 
 
@@ -127,7 +128,8 @@ def test_overall_score_correct_for_known_values():
     llm = _mock_llm(llm_output)
     with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
     assert abs(result.overall_score - 5.0) < 0.0001
 
 
@@ -142,7 +144,8 @@ def test_critical_compliance_flag_in_result():
     llm = _mock_llm(llm_output)
     with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
     assert any(f.severity == "critical" for f in result.compliance_flags)
 
 
@@ -151,7 +154,8 @@ def test_no_compliance_flags_when_llm_returns_none():
     llm = _mock_llm(llm_output)
     with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
     assert result.compliance_flags == []
 
 
@@ -166,9 +170,22 @@ def test_mcp_rules_injected_into_prompt():
     compliance_rules = "Call type: billing_issue\nRequired disclosures:\n  - Inform of dispute rights"
     with patch("src.services.mcp_client.get_compliance_rules", return_value=compliance_rules):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
     human_msg = llm.with_structured_output.return_value.invoke.call_args[0][0][1]
     assert "billing_issue" in human_msg.content
+
+
+def test_recent_flags_injected_into_prompt():
+    llm_output = _make_llm_output()
+    llm = _mock_llm(llm_output)
+    recent_flags = "Most common compliance flags for 'billing_issue':\n  [MEDIUM] Dispute rights not communicated"
+    with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
+        with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
+            with patch("src.services.mcp_client.get_recent_flags", return_value=recent_flags):
+                qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
+    human_msg = llm.with_structured_output.return_value.invoke.call_args[0][0][1]
+    assert "Dispute rights not communicated" in human_msg.content
 
 
 def test_graceful_degradation_when_mcp_unavailable():
@@ -176,7 +193,8 @@ def test_graceful_degradation_when_mcp_unavailable():
     llm = _mock_llm(llm_output)
     with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=llm)
     assert isinstance(result, QAScoreResult)
 
 
@@ -198,8 +216,9 @@ def test_run_retries_on_transient_error():
 
     with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            with patch("time.sleep"):
-                result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=mock_llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                with patch("time.sleep"):
+                    result = qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=mock_llm)
 
     assert mock_structured.invoke.call_count == 3
     assert isinstance(result, QAScoreResult)
@@ -213,9 +232,10 @@ def test_run_raises_after_three_failures():
 
     with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            with patch("time.sleep"):
-                with pytest.raises(LLMAnalysisError, match="3 attempts"):
-                    qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=mock_llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                with patch("time.sleep"):
+                    with pytest.raises(LLMAnalysisError, match="3 attempts"):
+                        qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=mock_llm)
 
     assert mock_structured.invoke.call_count == 3
 
@@ -230,7 +250,8 @@ def test_parse_error_not_retried():
 
     with patch("src.services.mcp_client.get_compliance_rules", return_value=""):
         with patch("src.services.mcp_client.get_agent_benchmarks", return_value=""):
-            with pytest.raises(LLMAnalysisError, match="could not be parsed"):
-                qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=mock_llm)
+            with patch("src.services.mcp_client.get_recent_flags", return_value=""):
+                with pytest.raises(LLMAnalysisError, match="could not be parsed"):
+                    qa_scoring_agent.run(_make_redacted(), _make_summary(), llm=mock_llm)
 
     assert mock_structured.invoke.call_count == 1

@@ -72,10 +72,10 @@ def get_agent_benchmarks(call_type: str) -> str:
 
 
 def get_recent_flags(call_type: str) -> str:
-    """Return the most common recent compliance flags for the given call type."""
+    """Return the most common recent compliance flags for the given call type, or '' if unknown."""
     flags = _RECENT_FLAGS.get(call_type)
     if not flags:
-        return f"No recent compliance flag data for call type: {call_type!r}"
+        return ""
 
     lines = [f"Most common compliance flags for '{call_type}':"]
     for flag in flags:

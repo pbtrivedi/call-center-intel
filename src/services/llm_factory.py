@@ -9,6 +9,15 @@ from src.common.logger import get_logger
 _logger = get_logger(__name__)
 
 
+def _parse_timeout() -> float:
+    raw = os.getenv("LLM_TIMEOUT_SECONDS", "60")
+    try:
+        return float(raw)
+    except ValueError:
+        _logger.warning("LLM_TIMEOUT_SECONDS=%r is not numeric, defaulting to 60s", raw)
+        return 60.0
+
+
 def get_llm() -> BaseChatModel:
     """
     Return a LangChain chat model driven entirely by env vars.
@@ -25,9 +34,8 @@ def get_llm() -> BaseChatModel:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             _logger.warning("OPENAI_API_KEY is not set — API calls will fail")
-        timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
         _logger.info("llm provider=openai model=%s", model)
-        return ChatOpenAI(model=model, api_key=api_key, timeout=timeout)
+        return ChatOpenAI(model=model, api_key=api_key, timeout=_parse_timeout())
 
     if provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
@@ -36,9 +44,8 @@ def get_llm() -> BaseChatModel:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             _logger.warning("GEMINI_API_KEY is not set — API calls will fail")
-        timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
         _logger.info("llm provider=gemini model=%s", model)
-        return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, timeout=timeout)
+        return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, timeout=_parse_timeout())
 
     if provider == "groq":
         from langchain_groq import ChatGroq
@@ -47,9 +54,8 @@ def get_llm() -> BaseChatModel:
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             _logger.warning("GROQ_API_KEY is not set — API calls will fail")
-        timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
         _logger.info("llm provider=groq model=%s", model)
-        return ChatGroq(model=model, api_key=api_key, timeout=timeout)
+        return ChatGroq(model=model, api_key=api_key, timeout=_parse_timeout())
 
     raise ValueError(
         f"Unknown LLM_PROVIDER={provider!r}. Supported values: openai, gemini, groq"

@@ -77,6 +77,7 @@ def _build_user_message(
     summary: SummaryResult,
     mcp_rules: str,
     mcp_benchmarks: str,
+    mcp_recent_flags: str,
 ) -> str:
     lines = [
         f"Call ID: {transcript.call_id}",
@@ -99,6 +100,8 @@ def _build_user_message(
         lines += ["", "## Compliance Rules", mcp_rules]
     if mcp_benchmarks:
         lines += ["", "## Historical Benchmarks", mcp_benchmarks]
+    if mcp_recent_flags:
+        lines += ["", "## Recent Compliance Patterns", mcp_recent_flags]
 
     return "\n".join(lines)
 
@@ -123,15 +126,18 @@ def run(
         llm = get_llm()
 
     # Fetch MCP context — gracefully degrade if unavailable
-    from src.services.mcp_client import get_compliance_rules, get_agent_benchmarks
+    from src.services.mcp_client import get_compliance_rules, get_agent_benchmarks, get_recent_flags
     mcp_rules = get_compliance_rules(call_type)
     mcp_benchmarks = get_agent_benchmarks(call_type)
+    mcp_recent_flags = get_recent_flags(call_type)
 
     context_parts = []
     if mcp_rules:
         context_parts.append("compliance rules")
     if mcp_benchmarks:
         context_parts.append("historical benchmarks")
+    if mcp_recent_flags:
+        context_parts.append("recent compliance patterns")
     mcp_context_block = (
         f"Use the {' and '.join(context_parts)} below as reference context "
         "when assessing the compliance dimension and calibrating scores."
@@ -146,7 +152,7 @@ def run(
     structured_llm = llm.with_structured_output(schema=_LLMQAOutput)
     messages = [
         SystemMessage(content=system_content),
-        HumanMessage(content=_build_user_message(transcript, summary, mcp_rules, mcp_benchmarks)),
+        HumanMessage(content=_build_user_message(transcript, summary, mcp_rules, mcp_benchmarks, mcp_recent_flags)),
     ]
 
     last_exc: Exception | None = None

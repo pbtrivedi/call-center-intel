@@ -26,7 +26,7 @@ from src.models.schemas import QAScoreResult, RedactedTranscript
 from src.security.pii_redactor import redact
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures"
-_SCORE_TOLERANCE = 1.0  # each dimension score must be within ±1 of expected range
+_SCORE_TOLERANCE = 0.5  # each dimension score must be within ±0.5 of expected range
 
 
 def _check_qa(result: QAScoreResult, expected: dict) -> list[str]:

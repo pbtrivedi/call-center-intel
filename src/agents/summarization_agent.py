@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from typing import cast
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -63,13 +64,13 @@ def run(
     last_exc: Exception | None = None
     for attempt in range(1, 4):
         try:
-            result = structured_llm.invoke(messages)
+            result = cast(SummaryResult, structured_llm.invoke(messages))
             _logger.info(
                 "summarization call_id=%s attempt=%d status=ok",
                 transcript.call_id,
                 attempt,
             )
-            return result  # type: ignore[return-value]
+            return result
         except (OutputParserException, ValueError) as exc:
             # Structured output parsing failure — not retryable
             raise LLMAnalysisError(
