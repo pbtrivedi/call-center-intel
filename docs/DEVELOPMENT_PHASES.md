@@ -132,11 +132,13 @@ Nine iterations, each delivering a working, testable slice of the system. Build 
 - `InjectionCheckResult.matched = False` for clean transcript
 
 ### Definition of Done
-- [ ] Transcript containing a credit card number → LLM never sees the raw digits
-- [ ] Transcript with `"Ignore all previous instructions"` → `InjectionCheckResult.matched = True`
-- [ ] `make test-security` passes all adversarial payload tests
-- [ ] All PII format variants covered in security suite
-- [ ] Audit logger `log_event()` callable without errors (stub DB write is fine)
+- [x] Transcript containing a credit card number → LLM never sees the raw digits
+- [x] Transcript with `"Ignore all previous instructions"` → `InjectionCheckResult.matched = True`
+- [x] `make test-security` passes all adversarial payload tests
+- [x] All PII format variants covered in security suite
+- [x] Audit logger `log_event()` callable without errors (stub DB write is fine)
+
+**Completed:** 2026-05-25 — PR #3 merged (`917af4d`). Follow-up (`ee19cfb`) addressed all review comments.
 
 ---
 
@@ -216,15 +218,17 @@ qa_scoring_agent.run(state)
 - QA scoring agent: functions correctly with empty MCP context (graceful degradation)
 
 ### Definition of Done
-- [ ] Call `summarization_agent.run()` with a mock LLM → get back a valid `SummaryResult`
-- [ ] Call `qa_scoring_agent.run()` with a mock LLM → `overall_score` matches the formula, not the LLM value
-- [ ] `LLM_PROVIDER=groq make run` works without code changes
-- [ ] `make test-unit` passes all LLM agent tests (LLM always mocked)
-- [ ] `python evals/eval_summarization.py` runs against real LLM and prints pass/fail per fixture
-- [ ] `python evals/eval_qa_scoring.py` runs and confirms compliance flags fire on known violations
-- [ ] At least 3 eval fixtures created and labeled in `evals/fixtures/`
-- [ ] MCP servers start independently: `python mcp_servers/compliance_rules_server.py`
-- [ ] QA scoring agent runs correctly with MCP servers both up and down (graceful degradation tested)
+- [x] Call `summarization_agent.run()` with a mock LLM → get back a valid `SummaryResult`
+- [x] Call `qa_scoring_agent.run()` with a mock LLM → `overall_score` matches the formula, not the LLM value
+- [x] `LLM_PROVIDER=groq make run` works without code changes
+- [x] `make test-unit` passes all LLM agent tests (LLM always mocked)
+- [x] `python evals/eval_summarization.py` runs against real LLM and prints pass/fail per fixture
+- [x] `python evals/eval_qa_scoring.py` runs and confirms compliance flags fire on known violations
+- [x] At least 3 eval fixtures created and labeled in `evals/fixtures/`
+- [x] MCP servers start independently: `python mcp_servers/compliance_rules_server.py`
+- [x] QA scoring agent runs correctly with MCP servers both up and down (graceful degradation tested)
+
+**Completed:** 2026-05-26 — PR #4 merged (`6db8738`). Review follow-up (`38710c1`) eliminated `mcp_client` YAML duplication, wired `get_recent_flags` into the QA prompt, tightened eval tolerance to ±0.5, fixed test isolation, and added `_parse_timeout()` validation. 337 unit tests passing.
 
 ---
 
