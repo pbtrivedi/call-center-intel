@@ -72,8 +72,6 @@ def test_run_passes_call_id_in_message():
     summary = _make_summary()
     llm = _mock_structured_llm(summary)
     summarization_agent.run(_make_redacted(call_id="my-call-99"), llm=llm)
-    _, messages = llm.with_structured_output.return_value.invoke.call_args
-    # messages is passed as positional arg
     invoke_args = llm.with_structured_output.return_value.invoke.call_args[0][0]
     human_content = invoke_args[1].content
     assert "my-call-99" in human_content

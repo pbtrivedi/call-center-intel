@@ -23,6 +23,8 @@ def get_llm() -> BaseChatModel:
 
         model = os.getenv("OPENAI_MODEL", "gpt-4o")
         api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            _logger.warning("OPENAI_API_KEY is not set — API calls will fail")
         timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
         _logger.info("llm provider=openai model=%s", model)
         return ChatOpenAI(model=model, api_key=api_key, timeout=timeout)
@@ -32,7 +34,9 @@ def get_llm() -> BaseChatModel:
 
         model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
         api_key = os.getenv("GEMINI_API_KEY")
-        timeout = int(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
+        if not api_key:
+            _logger.warning("GEMINI_API_KEY is not set — API calls will fail")
+        timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
         _logger.info("llm provider=gemini model=%s", model)
         return ChatGoogleGenerativeAI(model=model, google_api_key=api_key, timeout=timeout)
 
@@ -41,6 +45,8 @@ def get_llm() -> BaseChatModel:
 
         model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
         api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            _logger.warning("GROQ_API_KEY is not set — API calls will fail")
         timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
         _logger.info("llm provider=groq model=%s", model)
         return ChatGroq(model=model, api_key=api_key, timeout=timeout)

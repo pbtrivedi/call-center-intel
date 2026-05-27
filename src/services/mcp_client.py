@@ -49,48 +49,13 @@ def get_agent_benchmarks(call_type: str) -> str:
     Fetch historical agent benchmark scores for the given call type from the MCP Stats Server.
 
     Returns a formatted string for injection into the QA scoring prompt.
-    Returns empty string if the MCP server is unavailable.
+    Returns empty string if the MCP server is unavailable or the call type is unknown.
 
-    Phase 4: reads from a static YAML fixture.
     Phase 6: will query the SQLite repository via the MCP Stats Server.
     """
-    # Static benchmarks — replaced by live DB queries in Phase 6
-    _BENCHMARKS: dict[str, dict[str, float]] = {
-        "credit_dispute": {
-            "professionalism": 3.8,
-            "empathy": 3.5,
-            "problem_resolution": 3.2,
-            "compliance": 3.9,
-            "clarity": 3.6,
-        },
-        "account_inquiry": {
-            "professionalism": 4.1,
-            "empathy": 3.7,
-            "problem_resolution": 3.8,
-            "compliance": 4.2,
-            "clarity": 3.9,
-        },
-        "billing_issue": {
-            "professionalism": 3.9,
-            "empathy": 3.6,
-            "problem_resolution": 3.5,
-            "compliance": 3.8,
-            "clarity": 3.7,
-        },
-        "password_reset": {
-            "professionalism": 4.0,
-            "empathy": 3.4,
-            "problem_resolution": 4.1,
-            "compliance": 4.3,
-            "clarity": 4.0,
-        },
-    }
-
-    benchmarks = _BENCHMARKS.get(call_type)
-    if not benchmarks:
+    try:
+        from mcp_servers.historical_stats_server import get_agent_benchmarks as _server_get
+        return _server_get(call_type)
+    except Exception as exc:
+        _logger.warning("mcp_client get_agent_benchmarks call_type=%s error=%s", call_type, exc)
         return ""
-
-    lines = [f"Historical avg scores for {call_type}:"]
-    for dim, avg in benchmarks.items():
-        lines.append(f"  {dim}: {avg:.1f}/5.0")
-    return "\n".join(lines)

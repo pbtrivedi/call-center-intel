@@ -36,6 +36,7 @@
       "overall_min": 1.0,
       "overall_max": 2.5
     },
-    "compliance_notes": "Agent read full account number — explicit critical violation per account_inquiry rules ('Do not read back full account number'). Also failed to verify identity before data access. Expect at least one critical compliance flag."
+    "compliance_notes": "Agent read full account number — explicit critical violation per account_inquiry rules ('Do not read back full account number'). Also failed to verify identity before data access. Expect at least one critical compliance flag.",
+    "requires_critical_flag": true
   }
 }

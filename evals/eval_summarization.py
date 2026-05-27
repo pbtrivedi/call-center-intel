@@ -17,31 +17,13 @@ from pathlib import Path
 # Allow running from the repo root without installing
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from evals.utils import load_transcription_result
 from src.agents import summarization_agent
-from src.models.schemas import (
-    RedactedTranscript,
-    TranscriptionResult,
-    TranscriptionSegment,
-)
+from src.models.schemas import RedactedTranscript
 from src.security.pii_redactor import redact
 
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures"
-
-
-def _load_transcription_result(fixture: dict) -> TranscriptionResult:
-    t = fixture["transcript"]
-    segments = [
-        TranscriptionSegment(**seg) for seg in t.get("segments", [])
-    ]
-    return TranscriptionResult(
-        call_id=t["call_id"],
-        full_text=t["full_text"],
-        segments=segments,
-        language=t.get("language", "en"),
-        duration_seconds=t["duration_seconds"],
-        sha256_hash=t["sha256_hash"],
-    )
 
 
 def _check_summary(result, expected: dict) -> list[str]:
@@ -77,7 +59,7 @@ def run_fixture(fixture_path: Path) -> dict:
     print(f"Fixture: {fixture['id']} — {fixture['description']}")
     print(f"{'─' * 60}")
 
-    transcription = _load_transcription_result(fixture)
+    transcription = load_transcription_result(fixture)
     redacted: RedactedTranscript = redact(transcription)
 
     try:

@@ -20,29 +20,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from evals.utils import load_transcription_result
 from src.agents import qa_scoring_agent, summarization_agent
-from src.models.schemas import (
-    QAScoreResult,
-    RedactedTranscript,
-    TranscriptionResult,
-    TranscriptionSegment,
-)
+from src.models.schemas import QAScoreResult, RedactedTranscript
 from src.security.pii_redactor import redact
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures"
 _SCORE_TOLERANCE = 1.0  # each dimension score must be within ±1 of expected range
-
-
-def _load_transcription_result(fixture: dict) -> TranscriptionResult:
-    t = fixture["transcript"]
-    return TranscriptionResult(
-        call_id=t["call_id"],
-        full_text=t["full_text"],
-        segments=[TranscriptionSegment(**seg) for seg in t.get("segments", [])],
-        language=t.get("language", "en"),
-        duration_seconds=t["duration_seconds"],
-        sha256_hash=t["sha256_hash"],
-    )
 
 
 def _check_qa(result: QAScoreResult, expected: dict) -> list[str]:
@@ -83,17 +67,16 @@ def _check_qa(result: QAScoreResult, expected: dict) -> list[str]:
     return failures
 
 
-def _check_compliance_flags(result: QAScoreResult, expected: dict, fixture_id: str) -> list[str]:
+def _check_compliance_flags(result: QAScoreResult, expected: dict) -> list[str]:
     failures = []
-    notes = expected.get("compliance_notes", "")
 
-    # For fixture_02 we expect a critical flag (account number read back)
-    if fixture_id == "fixture_02":
+    if expected.get("requires_critical_flag"):
         severities = {f.severity for f in result.compliance_flags}
         if "critical" not in severities:
+            description = expected.get("compliance_notes", "critical compliance violation expected")
             failures.append(
-                f"Expected at least one critical compliance flag "
-                f"(account number read back); got severities: {severities}"
+                f"Expected at least one critical compliance flag ({description}); "
+                f"got severities: {severities}"
             )
 
     return failures
@@ -107,7 +90,7 @@ def run_fixture(fixture_path: Path) -> dict:
     print(f"Fixture: {fixture['id']} — {fixture['description']}")
     print(f"{'─' * 60}")
 
-    transcription = _load_transcription_result(fixture)
+    transcription = load_transcription_result(fixture)
     redacted: RedactedTranscript = redact(transcription)
     call_type = fixture.get("call_type", "general")
 
@@ -120,7 +103,7 @@ def run_fixture(fixture_path: Path) -> dict:
 
     expected = fixture["expected"]
     failures = _check_qa(result, expected)
-    failures += _check_compliance_flags(result, expected, fixture["id"])
+    failures += _check_compliance_flags(result, expected)
 
     if failures:
         print("  FAIL")

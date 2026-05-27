@@ -5,6 +5,7 @@ import time
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.exceptions import OutputParserException
+from pydantic import BaseModel, Field
 
 from src.common.exceptions import LLMAnalysisError
 from src.common.logger import get_logger
@@ -17,6 +18,20 @@ from src.models.schemas import (
 )
 
 _logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Intermediate schema for raw LLM output (overall_score excluded from
+# validation so we never carry the LLM value into QAScoreResult).
+# ---------------------------------------------------------------------------
+
+
+class _LLMQAOutput(BaseModel):
+    """Raw structured output from the LLM — overall_score is discarded."""
+    call_id: str
+    dimensions: list[QADimension]
+    compliance_flags: list[ComplianceFlag] = Field(default_factory=list)
+    overall_score: float = 0.0  # present in LLM JSON but never used
+
 
 _SYSTEM_PROMPT = """\
 You are a call-center QA specialist scoring an agent interaction. \
@@ -112,12 +127,16 @@ def run(
     mcp_rules = get_compliance_rules(call_type)
     mcp_benchmarks = get_agent_benchmarks(call_type)
 
-    mcp_context_block = ""
-    if mcp_rules or mcp_benchmarks:
-        mcp_context_block = (
-            "Use the compliance rules and historical benchmarks below as reference context "
-            "when assessing the compliance dimension and calibrating scores."
-        )
+    context_parts = []
+    if mcp_rules:
+        context_parts.append("compliance rules")
+    if mcp_benchmarks:
+        context_parts.append("historical benchmarks")
+    mcp_context_block = (
+        f"Use the {' and '.join(context_parts)} below as reference context "
+        "when assessing the compliance dimension and calibrating scores."
+        if context_parts else ""
+    )
 
     system_content = _SYSTEM_PROMPT.format(mcp_context=mcp_context_block)
 
@@ -169,19 +188,3 @@ def run(
         f"QA scoring failed after 3 attempts: {last_exc}",
         context={"call_id": transcript.call_id},
     ) from last_exc
-
-
-# ---------------------------------------------------------------------------
-# Intermediate schema for raw LLM output (overall_score excluded from
-# validation so we never carry the LLM value into QAScoreResult).
-# ---------------------------------------------------------------------------
-
-from pydantic import BaseModel, Field  # noqa: E402
-
-
-class _LLMQAOutput(BaseModel):
-    """Raw structured output from the LLM — overall_score is discarded."""
-    call_id: str
-    dimensions: list[QADimension]
-    compliance_flags: list[ComplianceFlag] = Field(default_factory=list)
-    overall_score: float = 0.0  # present in LLM JSON but never used

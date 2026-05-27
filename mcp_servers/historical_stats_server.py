@@ -60,10 +60,10 @@ _RECENT_FLAGS: dict[str, list[dict]] = {
 
 
 def get_agent_benchmarks(call_type: str) -> str:
-    """Return formatted historical average scores for the given call type."""
+    """Return formatted historical average scores for the given call type, or '' if unknown."""
     benchmarks = _BENCHMARKS.get(call_type)
     if not benchmarks:
-        return f"No benchmark data available for call type: {call_type!r}"
+        return ""
 
     lines = [f"Historical average QA scores for '{call_type}':"]
     for dim, avg in benchmarks.items():
@@ -89,5 +89,7 @@ def get_recent_flags(call_type: str) -> str:
 if __name__ == "__main__":
     for ct in sorted(_BENCHMARKS):
         print(f"\n=== {ct} ===")
-        print(get_agent_benchmarks(ct))
+        benchmarks = get_agent_benchmarks(ct)
+        if benchmarks:
+            print(benchmarks)
         print(get_recent_flags(ct))
