@@ -90,6 +90,20 @@ def get_settings() -> Settings:
     return _settings
 
 
+def get_langsmith_status() -> dict:
+    """Return LangSmith tracing status for the Observability tab."""
+    settings = get_settings()
+    enabled = bool(settings.langsmith_api_key)
+    if enabled:
+        project = settings.langsmith_project
+        return {
+            "enabled": True,
+            "project": project,
+            "url": f"https://smith.langchain.com/projects/{project}",
+        }
+    return {"enabled": False, "project": settings.langsmith_project, "url": None}
+
+
 def _reset_settings() -> None:
     """Reset cached settings. For use in tests only."""
     global _settings
