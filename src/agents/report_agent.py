@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from src.common.logger import get_logger
+from src.database.database import get_session
+from src.database.repository import log_audit_event, save_call_record, save_transcription_cache
 from src.models.schemas import CallReport
-from src.security.audit_logger import log_event
 
 _logger = get_logger(__name__)
 
@@ -17,9 +18,12 @@ def run(
     status: Literal["completed", "failed", "supervisor_review"] = "completed",
 ) -> CallReport:
     """
-    Assemble a CallReport from upstream pipeline state.
+    Assemble a CallReport from upstream pipeline state and persist to SQLite.
 
-    Phase 6 will add SQLite persistence; this phase builds and returns the report.
+    Writes:
+      - CallRecord (upsert) with full report JSON
+      - TranscriptionCache (insert-if-missing) keyed by SHA-256
+      - AuditLog event for report_generated
     """
     intake = state["intake_result"]
     transcription = state["transcription_result"]
@@ -37,6 +41,10 @@ def run(
         status=status,
     )
 
-    log_event(call_id, "report_generated", {"status": status})
+    with get_session() as session:
+        save_call_record(session, report)
+        save_transcription_cache(session, intake.audio_properties.sha256_hash, transcription)
+        log_audit_event(session, call_id, "report_generated", {"status": status})
+
     _logger.info("report assembled call_id=%s status=%s", call_id, status)
     return report

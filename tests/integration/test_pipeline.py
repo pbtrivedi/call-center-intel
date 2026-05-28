@@ -425,6 +425,7 @@ class TestLangSmithStatus:
         from src.config.loader import _reset_settings, get_langsmith_status
 
         monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
+        monkeypatch.setattr("src.config.loader.load_dotenv", lambda **kw: None)
         _reset_settings()
 
         status = get_langsmith_status()
