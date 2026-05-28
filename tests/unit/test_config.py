@@ -6,8 +6,9 @@ from src.config.loader import _reset_settings, get_settings
 
 
 @pytest.fixture(autouse=True)
-def reset_between_tests():
-    """Ensure each test starts with a clean settings cache."""
+def reset_between_tests(monkeypatch):
+    """Ensure each test starts with a clean settings cache and no .env side-effects."""
+    monkeypatch.setattr("src.config.loader.load_dotenv", lambda **kw: None)
     _reset_settings()
     yield
     _reset_settings()
