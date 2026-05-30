@@ -23,5 +23,8 @@ def build_interface() -> gr.Blocks:
         build_history_tab()
         build_observability_tab()
 
-    app.queue()
+    # default_concurrency_limit=4 lets Refresh buttons and other lightweight
+    # events run concurrently. The analyze pipeline gets its own named lane
+    # (concurrency_id="pipeline") so it never blocks UI events.
+    app.queue(default_concurrency_limit=4)
     return app

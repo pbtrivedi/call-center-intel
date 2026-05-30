@@ -252,4 +252,6 @@ def build_analyze_tab(pipeline_status: gr.Markdown) -> None:
                 pdf_btn, json_btn,
                 analyze_btn,       # disabled while running, re-enabled on finish
             ],
+            concurrency_id="pipeline",   # own lane — never blocks Refresh buttons
+            concurrency_limit=1,         # one pipeline at a time
         )
