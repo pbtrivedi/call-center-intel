@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import gradio as gr
 
 from src.models.schemas import AudioInput
+
+# Single-slot executor keeps the pipeline serialised while freeing the asyncio
+# event loop (and therefore uvicorn's WebSocket handling) during CPU-heavy work.
+_pipeline_executor = ThreadPoolExecutor(max_workers=1)
 
 _WEIGHTS = {
     "professionalism": 0.15,
@@ -80,11 +86,14 @@ def _fmt_qa(report) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _run_analysis(audio_path: str | None, caller_id: str, department: str):
+async def _run_analysis(audio_path: str | None, caller_id: str, department: str):
     """
-    Yields tuples of (pipeline_status, status, transcript, summary, qa, pdf_btn, json_btn, analyze_btn).
+    Async generator — yields (pipeline_status, status, transcript, summary, qa,
+    pdf_btn, json_btn, analyze_btn).
 
-    First yield is immediate so the browser unblocks before the long pipeline call.
+    The first yield is immediate so the browser unblocks before the long pipeline
+    call. workflow.invoke() runs in a ThreadPoolExecutor so the asyncio event loop
+    (uvicorn WebSocket handling) stays free during CPU-heavy transcription.
     """
     _hidden_banner = gr.update(value="", visible=False)
     _no_downloads = (gr.update(visible=False), gr.update(visible=False))
@@ -113,7 +122,7 @@ def _run_analysis(audio_path: str | None, caller_id: str, department: str):
         _btn_off,
     )
 
-    # ── Run the pipeline (long-running) ──────────────────────────────────────
+    # ── Run the pipeline in a thread so the event loop stays free ────────────
     try:
         from src.graph.pipeline import workflow
 
@@ -125,7 +134,11 @@ def _run_analysis(audio_path: str | None, caller_id: str, department: str):
             department=department.strip() or None,
         )
 
-        final_state = workflow.invoke({"audio_input": audio_input})
+        loop = asyncio.get_event_loop()
+        final_state = await loop.run_in_executor(
+            _pipeline_executor,
+            lambda: workflow.invoke({"audio_input": audio_input}),
+        )
 
         if final_state.get("error"):
             yield (

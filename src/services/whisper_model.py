@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 
 from faster_whisper import WhisperModel
@@ -44,10 +45,16 @@ def get_whisper_model() -> WhisperModel:
             device,
             compute_type,
         )
+        # Cap CPU threads at half the logical cores so uvicorn's event loop
+        # always has cores available to process WebSocket/UI events while
+        # transcription is running. Minimum of 2 for acceptable speed.
+        cpu_threads = max(2, (os.cpu_count() or 4) // 2)
+
         _model = WhisperModel(
             settings.whisper_model,
             device=device,
             compute_type=compute_type,
+            cpu_threads=cpu_threads,
         )
         _logger.info("Whisper model loaded")
 
