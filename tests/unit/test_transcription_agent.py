@@ -11,7 +11,8 @@ import pytest
 
 from src.agents.transcription_agent import (
     TranscriptionAgent,
-    _assign_speakers,
+    _assign_speaker_ids,
+    _assign_speakers_from_diarization,
     _clean_text,
     _compute_confidence,
     _RawSegment,
@@ -151,56 +152,90 @@ def test_clean_removes_youtube_footer():
 
 
 # ---------------------------------------------------------------------------
-# _assign_speakers
+# _assign_speaker_ids  (gap-based fallback)
 # ---------------------------------------------------------------------------
 
 
-def test_first_segment_is_agent():
-    segs = [_make_raw("Hello, thank you for calling.", start=0.0, end=2.0)]
-    assert _assign_speakers(segs) == ["Agent"]
-
-
-def test_customer_pattern_overrides():
-    segs = [_make_raw("I need help with my account.", start=0.0, end=2.0)]
-    assert _assign_speakers(segs) == ["Customer"]
-
-
-def test_agent_pattern_overrides():
-    segs = [_make_raw("Let me check your account right away.", start=0.0, end=2.0)]
-    assert _assign_speakers(segs) == ["Agent"]
-
-
-def test_gap_triggers_speaker_toggle():
-    segs = [
-        _make_raw("Hello, how can I help?", start=0.0, end=2.0),
-        # gap of 2 seconds (> 1.5 threshold), no strong content pattern
-        _make_raw("Okay, one second.", start=4.0, end=6.0),
-    ]
-    speakers = _assign_speakers(segs)
-    assert speakers[0] != speakers[1]
-
-
-def test_no_gap_keeps_same_speaker():
-    segs = [
-        _make_raw("Let me check that for you.", start=0.0, end=2.0),
-        _make_raw("Yes I see your account here.", start=2.1, end=4.0),  # tiny gap
-    ]
-    speakers = _assign_speakers(segs)
-    assert speakers[0] == speakers[1] == "Agent"
-
-
-def test_content_pattern_overrides_gap_toggle():
-    segs = [
-        _make_raw("Let me check your account.", start=0.0, end=2.0),      # Agent
-        _make_raw("I need to cancel my subscription.", start=4.0, end=6.0),  # gap → Customer
-    ]
-    speakers = _assign_speakers(segs)
-    assert speakers[0] == "Agent"
-    assert speakers[1] == "Customer"
+def test_single_segment_is_speaker_1():
+    segs = [_make_raw("Hello.", start=0.0, end=2.0)]
+    assert _assign_speaker_ids(segs) == ["SPEAKER_1"]
 
 
 def test_empty_segments_returns_empty():
-    assert _assign_speakers([]) == []
+    assert _assign_speaker_ids([]) == []
+
+
+def test_gap_above_threshold_toggles_speaker():
+    segs = [
+        _make_raw("Hello.", start=0.0, end=2.0),
+        _make_raw("Hi there.", start=4.0, end=6.0),   # 2 s gap > 1.5 threshold
+    ]
+    assert _assign_speaker_ids(segs) == ["SPEAKER_1", "SPEAKER_2"]
+
+
+def test_gap_below_threshold_keeps_same_speaker():
+    segs = [
+        _make_raw("Let me check that.", start=0.0, end=2.0),
+        _make_raw("One moment please.", start=2.1, end=4.0),  # 0.1 s gap
+    ]
+    assert _assign_speaker_ids(segs) == ["SPEAKER_1", "SPEAKER_1"]
+
+
+def test_gap_exactly_at_threshold_does_not_toggle():
+    segs = [
+        _make_raw("First.", start=0.0, end=2.0),
+        _make_raw("Second.", start=3.5, end=5.0),   # gap == 1.5 s exactly
+    ]
+    assert _assign_speaker_ids(segs) == ["SPEAKER_1", "SPEAKER_1"]
+
+
+def test_three_turns_alternates_correctly():
+    segs = [
+        _make_raw("Turn A.", start=0.0, end=2.0),
+        _make_raw("Turn B.", start=4.0, end=6.0),
+        _make_raw("Turn A again.", start=8.0, end=10.0),
+    ]
+    assert _assign_speaker_ids(segs) == ["SPEAKER_1", "SPEAKER_2", "SPEAKER_1"]
+
+
+def test_content_does_not_affect_gap_assignment():
+    # Customer/agent phrases must have no effect — pure gap logic only
+    segs = [
+        _make_raw("I need help with my account.", start=0.0, end=2.0),
+        _make_raw("Let me check that for you.", start=2.1, end=4.0),  # tiny gap
+    ]
+    assert _assign_speaker_ids(segs) == ["SPEAKER_1", "SPEAKER_1"]
+
+
+# ---------------------------------------------------------------------------
+# _assign_speakers_from_diarization
+# ---------------------------------------------------------------------------
+
+
+def test_diarization_assigns_correct_speaker():
+    from src.services.diarization import DiarizationSegment
+    from src.agents.transcription_agent import _assign_speakers_from_diarization
+
+    whisper = [
+        _make_raw("Hello.", start=0.0, end=2.0),
+        _make_raw("Hi there.", start=3.0, end=5.0),
+    ]
+    diar = [
+        DiarizationSegment(start=0.0, end=2.5, speaker="SPEAKER_00"),
+        DiarizationSegment(start=2.8, end=5.5, speaker="SPEAKER_01"),
+    ]
+    result = _assign_speakers_from_diarization(whisper, diar)
+    assert result == ["SPEAKER_00", "SPEAKER_01"]
+
+
+def test_diarization_unknown_when_no_overlap():
+    from src.services.diarization import DiarizationSegment
+    from src.agents.transcription_agent import _assign_speakers_from_diarization
+
+    whisper = [_make_raw("Silence region.", start=10.0, end=12.0)]
+    diar = [DiarizationSegment(start=0.0, end=5.0, speaker="SPEAKER_00")]
+    result = _assign_speakers_from_diarization(whisper, diar)
+    assert result == ["SPEAKER_UNKNOWN"]
 
 
 # ---------------------------------------------------------------------------
@@ -322,51 +357,6 @@ def test_external_cache_shared_between_agents():
     result = agent2.run(_make_intake())
 
     assert result.from_cache is True
-
-
-# ---------------------------------------------------------------------------
-# Diarization — refined patterns
-# ---------------------------------------------------------------------------
-
-
-def test_outbound_agent_calling_labeled_agent():
-    # "I'm calling you from" is an outbound agent phrase, not a customer phrase
-    segs = [
-        _make_raw("Hello, my name is Steven. I'm calling you from finance department.", start=8.0, end=13.0),
-    ]
-    assert _assign_speakers(segs) == ["Agent"]
-
-
-def test_im_calling_about_labeled_customer():
-    # "I'm calling about" is a customer phrase
-    segs = [
-        _make_raw("Hi, I'm calling about an incorrect charge on my account.", start=0.0, end=3.0),
-    ]
-    assert _assign_speakers(segs) == ["Customer"]
-
-
-def test_im_calling_regarding_labeled_customer():
-    segs = [_make_raw("I'm calling regarding my recent bill.", start=0.0, end=2.0)]
-    assert _assign_speakers(segs) == ["Customer"]
-
-
-def test_wonderful_labeled_agent():
-    segs = [_make_raw("Wonderful, I can see your account now.", start=0.0, end=2.0)]
-    assert _assign_speakers(segs) == ["Agent"]
-
-
-def test_excellent_labeled_agent():
-    segs = [_make_raw("Excellent, let me pull that up for you.", start=0.0, end=2.0)]
-    assert _assign_speakers(segs) == ["Agent"]
-
-
-def test_agent_continues_without_gap():
-    # Consecutive agent sentences with no gap must stay Agent
-    segs = [
-        _make_raw("Hello, thank you for calling.", start=0.0, end=2.0),
-        _make_raw("I'm calling you from our billing department.", start=2.1, end=5.0),
-    ]
-    assert _assign_speakers(segs) == ["Agent", "Agent"]
 
 
 # ---------------------------------------------------------------------------

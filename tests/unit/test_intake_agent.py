@@ -34,6 +34,7 @@ def _make_settings(**overrides) -> Settings:
         openai_api_key="",
         gemini_api_key="",
         groq_api_key="",
+        hf_token="",
     )
     return Settings(**{**defaults, **overrides})
 

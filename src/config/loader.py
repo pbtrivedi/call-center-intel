@@ -29,6 +29,7 @@ class Settings:
     openai_api_key: str = field(repr=False)
     gemini_api_key: str = field(repr=False)
     groq_api_key: str = field(repr=False)
+    hf_token: str = field(repr=False)
 
 
 def _parse_int(env_var: str, default: int) -> int:
@@ -86,6 +87,7 @@ def get_settings() -> Settings:
             openai_api_key=os.getenv("OPENAI_API_KEY", ""),
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
             groq_api_key=os.getenv("GROQ_API_KEY", ""),
+            hf_token=os.getenv("HF_TOKEN", ""),
         )
     return _settings
 

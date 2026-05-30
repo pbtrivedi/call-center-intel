@@ -22,7 +22,7 @@ def _utcnow() -> datetime:
 class TranscriptionSegment(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    speaker: Literal["Agent", "Customer"]
+    speaker: str  # e.g. "SPEAKER_00", "SPEAKER_01" from pyannote, or "SPEAKER_1"/"SPEAKER_2" from gap-based fallback
     text: str
     start_time: float
     end_time: float
