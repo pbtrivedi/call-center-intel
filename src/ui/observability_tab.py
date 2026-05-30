@@ -95,7 +95,7 @@ def _langsmith_md() -> str:
 
 
 def build_observability_tab() -> None:
-    with gr.Tab("Observability") as obs_tab:
+    with gr.Tab("Observability"):
         gr.Markdown("## Pipeline Observability")
 
         with gr.Row():
@@ -118,5 +118,4 @@ def build_observability_tab() -> None:
             summary, rows, ls_md = _load_metrics()
             return summary, rows, ls_md
 
-        obs_tab.select(fn=_on_load, inputs=[], outputs=[metrics_md, audit_df, langsmith_md])
         refresh_btn.click(fn=_on_load, inputs=[], outputs=[metrics_md, audit_df, langsmith_md])

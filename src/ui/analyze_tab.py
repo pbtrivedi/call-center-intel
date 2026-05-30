@@ -76,23 +76,44 @@ def _fmt_qa(report) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Pipeline runner
+# Pipeline runner — generator so the UI stays responsive during processing
 # ---------------------------------------------------------------------------
 
 
-def _run_analysis(
-    audio_path: str | None,
-    caller_id: str,
-    department: str,
-) -> tuple:
+def _run_analysis(audio_path: str | None, caller_id: str, department: str):
+    """
+    Yields tuples of (pipeline_status, status, transcript, summary, qa, pdf_btn, json_btn, analyze_btn).
+
+    First yield is immediate so the browser unblocks before the long pipeline call.
+    """
+    _hidden_banner = gr.update(value="", visible=False)
+    _no_downloads = (gr.update(visible=False), gr.update(visible=False))
+    _btn_on = gr.update(interactive=True)
+    _btn_off = gr.update(interactive=False)
+
     if audio_path is None:
-        return (
+        yield (
+            _hidden_banner,
             "Upload or record audio then click **Analyze**.",
             "", "", "",
-            gr.update(visible=False),
-            gr.update(visible=False),
+            *_no_downloads,
+            _btn_on,
         )
+        return
 
+    # ── First yield: unblock the UI immediately ──────────────────────────────
+    yield (
+        gr.update(
+            value="⏳ **Pipeline running** — analysis in progress. You can browse other tabs while waiting.",
+            visible=True,
+        ),
+        "⏳ Analyzing… (30–120 s)",
+        "", "", "",
+        *_no_downloads,
+        _btn_off,
+    )
+
+    # ── Run the pipeline (long-running) ──────────────────────────────────────
     try:
         from src.graph.pipeline import workflow
 
@@ -107,27 +128,30 @@ def _run_analysis(
         final_state = workflow.invoke({"audio_input": audio_input})
 
         if final_state.get("error"):
-            return (
+            yield (
+                _hidden_banner,
                 f"**Pipeline error:** {final_state['error']}",
                 "", "", "",
-                gr.update(visible=False),
-                gr.update(visible=False),
+                *_no_downloads,
+                _btn_on,
             )
+            return
 
         report = final_state.get("call_report")
         if report is None:
-            return (
+            yield (
+                _hidden_banner,
                 "**No report generated.** Check logs for details.",
                 "", "", "",
-                gr.update(visible=False),
-                gr.update(visible=False),
+                *_no_downloads,
+                _btn_on,
             )
+            return
 
         transcript_md = _fmt_transcript(final_state.get("transcription_result"))
         summary_md = _fmt_summary(report)
         qa_md = _fmt_qa(report)
 
-        # Write downloads to temp files
         from src.services.pdf_generator import generate as generate_pdf
 
         pdf_bytes = generate_pdf(report)
@@ -140,23 +164,27 @@ def _run_analysis(
             fh.write(report.model_dump_json(indent=2))
 
         label = report.status.replace("_", " ").title()
-        status_msg = f"Analysis complete — **{label}** | QA score: **{report.qa_scores.overall_score:.2f}/5.00**"
+        status_msg = (
+            f"✅ Analysis complete — **{label}** | "
+            f"QA score: **{report.qa_scores.overall_score:.2f}/5.00**"
+        )
 
-        return (
+        yield (
+            _hidden_banner,
             status_msg,
-            transcript_md,
-            summary_md,
-            qa_md,
+            transcript_md, summary_md, qa_md,
             gr.update(value=pdf_path, visible=True),
             gr.update(value=json_path, visible=True),
+            _btn_on,
         )
 
     except Exception as exc:
-        return (
+        yield (
+            _hidden_banner,
             f"**Error:** {exc}",
             "", "", "",
-            gr.update(visible=False),
-            gr.update(visible=False),
+            *_no_downloads,
+            _btn_on,
         )
 
 
@@ -165,7 +193,7 @@ def _run_analysis(
 # ---------------------------------------------------------------------------
 
 
-def build_analyze_tab() -> None:
+def build_analyze_tab(pipeline_status: gr.Markdown) -> None:
     with gr.Tab("Analyze"):
         gr.Markdown("## Analyze a Call Recording")
 
@@ -189,8 +217,7 @@ def build_analyze_tab() -> None:
                     )
                 analyze_btn = gr.Button("Analyze", variant="primary", size="lg")
                 status = gr.Markdown(
-                    "*Upload an audio file and click **Analyze**. "
-                    "Processing takes 30–120 seconds — do not refresh.*"
+                    "*Upload an audio file and click **Analyze**.*"
                 )
 
         with gr.Row():
@@ -218,5 +245,11 @@ def build_analyze_tab() -> None:
         analyze_btn.click(
             fn=_run_analysis,
             inputs=[audio, caller_id, department],
-            outputs=[status, transcript_out, summary_out, qa_out, pdf_btn, json_btn],
+            outputs=[
+                pipeline_status,   # top-level banner in interface.py
+                status,
+                transcript_out, summary_out, qa_out,
+                pdf_btn, json_btn,
+                analyze_btn,       # disabled while running, re-enabled on finish
+            ],
         )

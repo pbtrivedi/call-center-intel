@@ -132,7 +132,7 @@ def build_history_tab() -> None:
             headers=["Call ID", "Filename", "Status", "QA Score", "Analyzed At"],
             datatype=["str", "str", "str", "str", "str"],
             interactive=False,
-            label="Select a row to view details",
+            label="Click Refresh to load calls, then select a row to view details",
         )
 
         with gr.Column(visible=False) as detail_col:
@@ -159,12 +159,6 @@ def build_history_tab() -> None:
             qa_md = _fmt_qa_from_json(data)
             return gr.update(visible=True), transcript_md, summary_md, qa_md
 
-        # Load on tab select and on refresh
-        history_tab.select(
-            fn=_on_load,
-            inputs=[],
-            outputs=[history_df, history_state],
-        )
         refresh_btn.click(
             fn=_on_load,
             inputs=[],

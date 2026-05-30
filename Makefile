@@ -1,4 +1,4 @@
-.PHONY: install test test-unit test-integration test-security test-all lint format run clean
+.PHONY: install test test-unit test-integration test-security test-all lint format run stop clean
 
 install:
 	pip install -e ".[dev]"
@@ -26,6 +26,9 @@ format:
 
 run:
 	python app.py
+
+stop:
+	@kill $$(lsof -ti :$$(python -c "from src.config.loader import get_settings; print(get_settings().app_port)")) 2>/dev/null && echo "App stopped." || echo "No app running on that port."
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; \

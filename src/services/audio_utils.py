@@ -61,6 +61,12 @@ def get_duration(path: str | Path, fmt: str) -> float:
                 rate = wf.getframerate()
                 if rate == 0:
                     raise AudioValidationError("WAV file has zero sample rate", context={"path": path})
+                # Some recorders write INT32_MAX as a sentinel when file size is unknown
+                # at recording time (streaming/live capture). Fall back to file size.
+                if frames >= 2 ** 31 - 1:
+                    byte_rate = rate * wf.getnchannels() * wf.getsampwidth()
+                    data_bytes = max(0, Path(path).stat().st_size - 44)
+                    return data_bytes / byte_rate
                 return frames / float(rate)
         except wave.Error as e:
             raise AudioValidationError(

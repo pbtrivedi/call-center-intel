@@ -14,8 +14,14 @@ def build_interface() -> gr.Blocks:
             "AI-powered call analysis — transcription, summarization, QA scoring, and compliance flagging."
         )
 
-        build_analyze_tab()
+        # Top-level banner — always visible regardless of which tab is active.
+        # The Analyze generator writes here so users see pipeline status even
+        # when they switch to History or Observability mid-run.
+        pipeline_status = gr.Markdown(visible=False)
+
+        build_analyze_tab(pipeline_status)
         build_history_tab()
         build_observability_tab()
 
+    app.queue()
     return app
