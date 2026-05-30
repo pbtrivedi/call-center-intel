@@ -1,28 +1,28 @@
 from __future__ import annotations
 
-import json
-
 import gradio as gr
+from sqlalchemy import select
+
+from src.database.database import get_session
+from src.database.models import CallRecord
+from src.database.repository import delete_call_record, get_call_history
 
 
 # ---------------------------------------------------------------------------
-# Data loading
+# Data helpers
 # ---------------------------------------------------------------------------
 
 
-def _load_records() -> tuple[list[list], list[dict]]:
-    """Return (table_rows, full_report_json_list) for the 50 most recent calls."""
+def _load_records() -> tuple[list[list], list[str]]:
+    """Return (table_rows, call_id_list) for the 50 most recent calls."""
     try:
-        from src.database.database import get_session
-        from src.database.repository import get_call_history
-
         with get_session() as session:
             records = get_call_history(session, limit=50)
     except Exception:
         return [], []
 
     rows: list[list] = []
-    reports: list[dict] = []
+    call_ids: list[str] = []
     for r in records:
         rows.append([
             r.call_id[:8] + "…",
@@ -31,19 +31,39 @@ def _load_records() -> tuple[list[list], list[dict]]:
             f"{r.overall_qa_score:.2f}" if r.overall_qa_score is not None else "—",
             r.analyzed_at.strftime("%Y-%m-%d %H:%M UTC") if r.analyzed_at else "—",
         ])
-        reports.append(r.report_json or {})
+        call_ids.append(r.call_id)
 
-    return rows, reports
+    return rows, call_ids
+
+
+def _load_detail(call_id: str) -> tuple[str, str, str]:
+    """Fetch transcript/summary/QA markdown for a single call_id from DB."""
+    try:
+        with get_session() as session:
+            record = session.execute(
+                select(CallRecord).where(CallRecord.call_id == call_id)
+            ).scalar_one_or_none()
+    except Exception as exc:
+        return f"_DB error: {exc}_", "", ""
+
+    if record is None:
+        return "_Record not found._", "", ""
+
+    data = record.report_json or {}
+    return (
+        _fmt_transcript(data),
+        _fmt_summary(data),
+        _fmt_qa(data),
+    )
 
 
 # ---------------------------------------------------------------------------
-# Detail formatters  (rebuild from stored report JSON)
+# Markdown formatters (from stored report_json)
 # ---------------------------------------------------------------------------
 
 
-def _fmt_transcript_from_json(data: dict) -> str:
-    tx = data.get("transcription", {})
-    segments = tx.get("segments", [])
+def _fmt_transcript(data: dict) -> str:
+    segments = data.get("transcription", {}).get("segments", [])
     if not segments:
         return "_No transcript available._"
     lines = []
@@ -54,7 +74,7 @@ def _fmt_transcript_from_json(data: dict) -> str:
     return "\n\n".join(lines)
 
 
-def _fmt_summary_from_json(data: dict) -> str:
+def _fmt_summary(data: dict) -> str:
     s = data.get("summary", {})
     if not s:
         return "_No summary available._"
@@ -67,29 +87,24 @@ def _fmt_summary_from_json(data: dict) -> str:
     ]
     for pt in s.get("key_discussion_points", []):
         parts.append(f"- {pt}")
-    action_items = s.get("action_items", [])
-    if action_items:
-        parts.append("")
-        parts.append("**Action Items:**")
-        for ai in action_items:
-            deadline = f" — due {ai['deadline']}" if ai.get("deadline") else ""
-            parts.append(f"- [{ai.get('owner', '?')}] {ai.get('description', '')}{deadline}")
+    for ai in s.get("action_items", []):
+        deadline = f" — due {ai['deadline']}" if ai.get("deadline") else ""
+        parts.append(f"- [{ai.get('owner', '?')}] {ai.get('description', '')}{deadline}")
     return "\n".join(parts)
 
 
-def _fmt_qa_from_json(data: dict) -> str:
+_WEIGHTS = {
+    "professionalism": 0.15, "empathy": 0.20,
+    "problem_resolution": 0.30, "compliance": 0.20, "clarity": 0.15,
+}
+
+
+def _fmt_qa(data: dict) -> str:
     qa = data.get("qa_scores", {})
     if not qa:
         return "_No QA data available._"
-
-    _weights = {
-        "professionalism": 0.15, "empathy": 0.20,
-        "problem_resolution": 0.30, "compliance": 0.20, "clarity": 0.15,
-    }
-
-    overall = qa.get("overall_score", 0.0)
     parts = [
-        f"**Overall Score: {overall:.2f} / 5.00**",
+        f"**Overall Score: {qa.get('overall_score', 0):.2f} / 5.00**",
         "",
         "| Dimension | Score | Weight | Justification |",
         "|-----------|:-----:|:------:|---------------|",
@@ -97,20 +112,13 @@ def _fmt_qa_from_json(data: dict) -> str:
     for dim in qa.get("dimensions", []):
         name = dim.get("name", "").replace("_", " ").title()
         score = dim.get("score", 0.0)
-        weight = _weights.get(dim.get("name", ""), 0)
+        weight = _WEIGHTS.get(dim.get("name", ""), 0)
         just = dim.get("justification", "")
         just = just[:110] + ("…" if len(just) > 110 else "")
         parts.append(f"| {name} | {score:.1f} | {weight:.0%} | {just} |")
-
-    flags = qa.get("compliance_flags", [])
-    if flags:
-        parts.append("")
-        parts.append("**Compliance Flags:**")
-        for flag in flags:
-            ts = f" @{flag['timestamp']}" if flag.get("timestamp") else ""
-            sev = flag.get("severity", "").upper()
-            parts.append(f"- **[{sev}]**{ts} {flag.get('description', '')}")
-
+    for flag in qa.get("compliance_flags", []):
+        ts = f" @{flag['timestamp']}" if flag.get("timestamp") else ""
+        parts.append(f"- **[{flag.get('severity','').upper()}]**{ts} {flag.get('description', '')}")
     return "\n".join(parts)
 
 
@@ -120,19 +128,24 @@ def _fmt_qa_from_json(data: dict) -> str:
 
 
 def build_history_tab() -> None:
-    with gr.Tab("History") as history_tab:
+    with gr.Tab("History"):
         gr.Markdown("## Call History")
 
         with gr.Row():
             refresh_btn = gr.Button("Refresh", variant="secondary", size="sm")
+            delete_btn = gr.Button(
+                "Delete Selected", variant="stop", size="sm", interactive=False
+            )
 
-        history_state = gr.State([])
+        # State holds only the list of full call_ids — small, no JSON blobs
+        call_ids_state = gr.State([])
+        selected_id_state = gr.State(None)
 
         history_df = gr.Dataframe(
             headers=["Call ID", "Filename", "Status", "QA Score", "Analyzed At"],
             datatype=["str", "str", "str", "str", "str"],
             interactive=False,
-            label="Click Refresh to load calls, then select a row to view details",
+            label="Click Refresh to load, then select a row to view details",
         )
 
         with gr.Column(visible=False) as detail_col:
@@ -145,27 +158,62 @@ def build_history_tab() -> None:
                 with gr.Tab("QA Scorecard"):
                     detail_qa = gr.Markdown()
 
-        def _on_load():
-            rows, reports = _load_records()
-            return rows, reports
+        # ── Helpers ──────────────────────────────────────────────────────────
 
-        def _on_select(evt: gr.SelectData, reports: list[dict]):
+        def _reset_outputs():
+            return (
+                gr.update(visible=False),  # detail_col
+                "", "", "",                # detail content
+                None,                      # selected_id_state
+                gr.update(interactive=False),  # delete_btn
+            )
+
+        def _on_load():
+            rows, call_ids = _load_records()
+            return (rows, call_ids) + _reset_outputs()
+
+        def _on_select(evt: gr.SelectData, call_ids: list[str]):
             row_idx = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
-            if not reports or row_idx >= len(reports):
-                return gr.update(visible=False), "", "", ""
-            data = reports[row_idx]
-            transcript_md = _fmt_transcript_from_json(data)
-            summary_md = _fmt_summary_from_json(data)
-            qa_md = _fmt_qa_from_json(data)
-            return gr.update(visible=True), transcript_md, summary_md, qa_md
+            if not call_ids or row_idx >= len(call_ids):
+                return (gr.update(visible=False), "", "", "", None, gr.update(interactive=False))
+            call_id = call_ids[row_idx]
+            transcript_md, summary_md, qa_md = _load_detail(call_id)
+            return (
+                gr.update(visible=True),
+                transcript_md, summary_md, qa_md,
+                call_id,
+                gr.update(interactive=True),
+            )
+
+        def _on_delete(call_id: str | None):
+            if call_id:
+                try:
+                    with get_session() as session:
+                        delete_call_record(session, call_id)
+                except Exception:
+                    pass
+            rows, call_ids = _load_records()
+            return (rows, call_ids) + _reset_outputs()
+
+        # ── Event wiring ─────────────────────────────────────────────────────
+
+        _detail_outputs = [
+            detail_col, detail_transcript, detail_summary, detail_qa,
+            selected_id_state, delete_btn,
+        ]
 
         refresh_btn.click(
             fn=_on_load,
             inputs=[],
-            outputs=[history_df, history_state],
+            outputs=[history_df, call_ids_state] + _detail_outputs,
         )
         history_df.select(
             fn=_on_select,
-            inputs=[history_state],
-            outputs=[detail_col, detail_transcript, detail_summary, detail_qa],
+            inputs=[call_ids_state],
+            outputs=_detail_outputs,
+        )
+        delete_btn.click(
+            fn=_on_delete,
+            inputs=[selected_id_state],
+            outputs=[history_df, call_ids_state] + _detail_outputs,
         )

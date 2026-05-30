@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -85,6 +86,14 @@ def save_transcription_cache(
     session.add(row)
     session.commit()
     _logger.info("cache saved sha256=%s...", sha256[:8])
+
+
+def delete_call_record(session: Session, call_id: str) -> None:
+    """Delete a CallRecord and its AuditLog entries. TranscriptionCache is left intact."""
+    session.execute(sql_delete(AuditLog).where(AuditLog.call_id == call_id))
+    session.execute(sql_delete(CallRecord).where(CallRecord.call_id == call_id))
+    session.commit()
+    _logger.info("deleted call_record call_id=%s", call_id)
 
 
 def log_audit_event(
