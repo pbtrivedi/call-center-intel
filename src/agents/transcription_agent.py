@@ -18,22 +18,6 @@ from src.services.whisper_model import get_whisper_model
 _GAP_THRESHOLD = 1.5  # seconds of silence before considering a speaker change
 _MIN_CONFIDENCE = 0.05  # below this, the segment is very likely hallucinated by Whisper
 
-_AGENT_RE = re.compile(
-    r"\b(I can help|let me|your account|sir|ma'am|I'll|we can|our system"
-    r"|thank you for calling|I'm happy to|one moment|I see here"
-    r"|wonderful|excellent|absolutely|I would like to guide)\b"
-    r"|I'?m calling (you|you from|from|on behalf|to help)"
-    r"|calling (you )?to help",
-    re.IGNORECASE,
-)
-_CUSTOMER_RE = re.compile(
-    r"\b(I need|my account|I want|please help"
-    r"|I was charged|I have a problem|I don't understand|why was I"
-    r"|I haven't received|my bill|my order)\b"
-    r"|I'?m calling (about|regarding|because|to cancel|to dispute|to close)",
-    re.IGNORECASE,
-)
-
 # ---------------------------------------------------------------------------
 # Artifact cleaning
 # ---------------------------------------------------------------------------
@@ -131,8 +115,18 @@ class TranscriptionAgent:
                 context={"call_id": call_id},
             ) from e
 
+        # --- speaker diarization ---------------------------------------------
+        # Try pyannote (voice-fingerprint based) first; fall back to gap-based.
+        from src.services.diarization import diarize
+        diarization_segments = diarize(intake_result.temp_file_path)
+        if diarization_segments is not None:
+            speakers = _assign_speakers_from_diarization(raw_segments, diarization_segments)
+            self._logger.info("using pyannote diarization call_id=%s", call_id)
+        else:
+            speakers = _assign_speaker_ids(raw_segments)
+            self._logger.info("using gap-based speaker assignment call_id=%s", call_id)
+
         # --- clean + build segments ------------------------------------------
-        speakers = _assign_speakers(raw_segments)
         final_segments: list[TranscriptionSegment] = []
 
         for raw, speaker in zip(raw_segments, speakers):
@@ -197,31 +191,46 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
-def _assign_speakers(segments: list[_RawSegment]) -> list[str]:
-    """Assign 'Agent' or 'Customer' to each segment using gap + content heuristics."""
+def _assign_speaker_ids(segments: list[_RawSegment]) -> list[str]:
+    """Fallback: assign neutral speaker IDs based on silence gaps only.
+
+    Used when pyannote diarization is unavailable (no HF_TOKEN or import error).
+    Toggles between SPEAKER_1 and SPEAKER_2 on each gap > _GAP_THRESHOLD.
+    """
     if not segments:
         return []
 
-    speakers: list[str] = []
-    current = "Agent"  # call center convention: agent opens
+    speaker_idx = 0  # 0 → SPEAKER_1, 1 → SPEAKER_2
     prev_end = 0.0
+    result: list[str] = []
 
-    for seg in segments:
-        gap = seg.start - prev_end
-
-        # Gap-based toggle: tentatively flip on significant silence
-        if speakers and gap > _GAP_THRESHOLD:
-            current = "Customer" if current == "Agent" else "Agent"
-
-        # Content-pattern override (only when signal is unambiguous)
-        agent_match = bool(_AGENT_RE.search(seg.text))
-        customer_match = bool(_CUSTOMER_RE.search(seg.text))
-        if customer_match and not agent_match:
-            current = "Customer"
-        elif agent_match and not customer_match:
-            current = "Agent"
-
-        speakers.append(current)
+    for i, seg in enumerate(segments):
+        if i > 0 and (seg.start - prev_end) > _GAP_THRESHOLD:
+            speaker_idx = 1 - speaker_idx
+        result.append(f"SPEAKER_{speaker_idx + 1}")
         prev_end = seg.end
 
-    return speakers
+    return result
+
+
+def _assign_speakers_from_diarization(
+    whisper_segments: list[_RawSegment],
+    diarization_segments: list,
+) -> list[str]:
+    """Align pyannote diarization output to Whisper segments.
+
+    For each Whisper segment, find the diarization segment with the greatest
+    time overlap and use its speaker label. Falls back to 'SPEAKER_UNKNOWN'
+    if no overlap is found (e.g., silence regions).
+    """
+    result: list[str] = []
+    for wseg in whisper_segments:
+        best_speaker = "SPEAKER_UNKNOWN"
+        best_overlap = 0.0
+        for dseg in diarization_segments:
+            overlap = min(wseg.end, dseg.end) - max(wseg.start, dseg.start)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_speaker = dseg.speaker
+        result.append(best_speaker)
+    return result

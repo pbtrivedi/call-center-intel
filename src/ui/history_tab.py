@@ -13,13 +13,16 @@ from src.database.repository import delete_call_record, get_call_history
 # ---------------------------------------------------------------------------
 
 
-def _load_records() -> tuple[list[list], list[str]]:
-    """Return (table_rows, call_id_list) for the 50 most recent calls."""
+def _load_records() -> tuple[list[list], list[str], str]:
+    """Return (table_rows, call_id_list, status_msg) for the 50 most recent calls."""
     try:
         with get_session() as session:
             records = get_call_history(session, limit=50)
-    except Exception:
-        return [], []
+    except Exception as exc:
+        return [], [], f"_Database error: {exc}_"
+
+    if not records:
+        return [], [], "_No call records found. Analyze a call to see results here._"
 
     rows: list[list] = []
     call_ids: list[str] = []
@@ -33,7 +36,7 @@ def _load_records() -> tuple[list[list], list[str]]:
         ])
         call_ids.append(r.call_id)
 
-    return rows, call_ids
+    return rows, call_ids, f"_{len(records)} record(s) loaded._"
 
 
 def _load_detail(call_id: str) -> tuple[str, str, str]:
@@ -128,6 +131,9 @@ def _fmt_qa(data: dict) -> str:
 
 
 def build_history_tab() -> None:
+    # Pre-populate at build time — session is already warmed up by app.py
+    initial_rows, initial_ids, initial_status = _load_records()
+
     with gr.Tab("History"):
         gr.Markdown("## Call History")
 
@@ -137,15 +143,18 @@ def build_history_tab() -> None:
                 "Delete Selected", variant="stop", size="sm", interactive=False
             )
 
+        load_status = gr.Markdown(initial_status)
+
         # State holds only the list of full call_ids — small, no JSON blobs
-        call_ids_state = gr.State([])
+        call_ids_state = gr.State(initial_ids)
         selected_id_state = gr.State(None)
 
         history_df = gr.Dataframe(
+            value=initial_rows,
             headers=["Call ID", "Filename", "Status", "QA Score", "Analyzed At"],
             datatype=["str", "str", "str", "str", "str"],
             interactive=False,
-            label="Click Refresh to load, then select a row to view details",
+            label="Select a row to view details",
         )
 
         with gr.Column(visible=False) as detail_col:
@@ -160,7 +169,7 @@ def build_history_tab() -> None:
 
         # ── Helpers ──────────────────────────────────────────────────────────
 
-        def _reset_outputs():
+        def _reset_detail():
             return (
                 gr.update(visible=False),  # detail_col
                 "", "", "",                # detail content
@@ -169,8 +178,8 @@ def build_history_tab() -> None:
             )
 
         def _on_load():
-            rows, call_ids = _load_records()
-            return (rows, call_ids) + _reset_outputs()
+            rows, call_ids, status_msg = _load_records()
+            return (rows, call_ids, status_msg) + _reset_detail()
 
         def _on_select(evt: gr.SelectData, call_ids: list[str]):
             row_idx = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
@@ -192,8 +201,8 @@ def build_history_tab() -> None:
                         delete_call_record(session, call_id)
                 except Exception:
                     pass
-            rows, call_ids = _load_records()
-            return (rows, call_ids) + _reset_outputs()
+            rows, call_ids, status_msg = _load_records()
+            return (rows, call_ids, status_msg) + _reset_detail()
 
         # ── Event wiring ─────────────────────────────────────────────────────
 
@@ -201,12 +210,9 @@ def build_history_tab() -> None:
             detail_col, detail_transcript, detail_summary, detail_qa,
             selected_id_state, delete_btn,
         ]
+        _load_outputs = [history_df, call_ids_state, load_status] + _detail_outputs
 
-        refresh_btn.click(
-            fn=_on_load,
-            inputs=[],
-            outputs=[history_df, call_ids_state] + _detail_outputs,
-        )
+        refresh_btn.click(fn=_on_load, inputs=[], outputs=_load_outputs)
         history_df.select(
             fn=_on_select,
             inputs=[call_ids_state],
@@ -215,5 +221,5 @@ def build_history_tab() -> None:
         delete_btn.click(
             fn=_on_delete,
             inputs=[selected_id_state],
-            outputs=[history_df, call_ids_state] + _detail_outputs,
+            outputs=_load_outputs,
         )

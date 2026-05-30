@@ -95,6 +95,9 @@ def _langsmith_md() -> str:
 
 
 def build_observability_tab() -> None:
+    # Pre-populate at build time — session is already warmed up by app.py
+    initial_summary, initial_audit_rows, initial_ls_md = _load_metrics()
+
     with gr.Tab("Observability"):
         gr.Markdown("## Pipeline Observability")
 
@@ -103,12 +106,13 @@ def build_observability_tab() -> None:
 
         with gr.Row():
             with gr.Column(scale=1):
-                metrics_md = gr.Markdown()
+                metrics_md = gr.Markdown(initial_summary)
             with gr.Column(scale=2):
-                langsmith_md = gr.Markdown()
+                langsmith_md = gr.Markdown(initial_ls_md)
 
         gr.Markdown("### Recent Audit Events (last 20)")
         audit_df = gr.Dataframe(
+            value=initial_audit_rows,
             headers=["Timestamp", "Call ID", "Action", "Details"],
             datatype=["str", "str", "str", "str"],
             interactive=False,
@@ -118,4 +122,8 @@ def build_observability_tab() -> None:
             summary, rows, ls_md = _load_metrics()
             return summary, rows, ls_md
 
-        refresh_btn.click(fn=_on_load, inputs=[], outputs=[metrics_md, audit_df, langsmith_md])
+        refresh_btn.click(
+            fn=_on_load,
+            inputs=[],
+            outputs=[metrics_md, audit_df, langsmith_md],
+        )

@@ -86,9 +86,11 @@ def test_segment_valid():
     assert obj.confidence == 0.95
 
 
-def test_segment_invalid_speaker():
-    with pytest.raises(ValidationError):
-        _segment(speaker="Supervisor")
+def test_segment_accepts_any_speaker_string():
+    # speaker is now a free-form str (pyannote returns SPEAKER_00, gap-based returns SPEAKER_1, etc.)
+    assert _segment(speaker="SPEAKER_00").speaker == "SPEAKER_00"
+    assert _segment(speaker="SPEAKER_1").speaker == "SPEAKER_1"
+    assert _segment(speaker="SPEAKER_UNKNOWN").speaker == "SPEAKER_UNKNOWN"
 
 
 def test_segment_confidence_too_low():
